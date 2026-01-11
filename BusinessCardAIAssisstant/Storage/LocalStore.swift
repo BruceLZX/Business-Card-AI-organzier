@@ -36,6 +36,16 @@ final class LocalStore {
         saveDocument(contact, to: contactFolder, fileName: "contact.json")
     }
 
+    func deleteCompany(_ id: UUID) {
+        let url = companiesURL.appendingPathComponent(id.uuidString, isDirectory: true)
+        deleteItemIfExists(at: url)
+    }
+
+    func deleteContact(_ id: UUID) {
+        let url = contactsURL.appendingPathComponent(id.uuidString, isDirectory: true)
+        deleteItemIfExists(at: url)
+    }
+
     func saveCapture(_ image: UIImage) -> UUID? {
         let id = UUID()
         let url = capturesURL.appendingPathComponent("\(id.uuidString).jpg")
@@ -141,5 +151,10 @@ final class LocalStore {
         if !fileManager.fileExists(atPath: url.path) {
             try fileManager.createDirectory(at: url, withIntermediateDirectories: true)
         }
+    }
+
+    private func deleteItemIfExists(at url: URL) {
+        guard fileManager.fileExists(atPath: url.path) else { return }
+        try? fileManager.removeItem(at: url)
     }
 }

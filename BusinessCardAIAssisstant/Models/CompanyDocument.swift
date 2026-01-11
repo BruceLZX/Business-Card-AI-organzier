@@ -49,6 +49,9 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
         if !filters.serviceType.isEmpty && !serviceType.lowercased().contains(filters.serviceType.lowercased()) {
             return false
         }
+        if !filters.tag.isEmpty && !tags.joined(separator: " ").lowercased().contains(filters.tag.lowercased()) {
+            return false
+        }
         if let audience = filters.targetAudience.asAudience, audience != targetAudience {
             return false
         }

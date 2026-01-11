@@ -16,6 +16,10 @@ struct FilterSheetView: View {
                     TextField(settings.text(.serviceTypeLabel), text: $filters.serviceType)
                 }
 
+                Section(settings.text(.tagFilter)) {
+                    TextField(settings.text(.tagFilter), text: $filters.tag)
+                }
+
                 Section(settings.text(.targetAudience)) {
                     Picker(settings.text(.targetAudience), selection: $filters.targetAudience) {
                         ForEach(TargetAudienceFilter.allCases) { option in

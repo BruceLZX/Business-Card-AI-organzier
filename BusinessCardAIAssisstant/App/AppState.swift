@@ -32,7 +32,7 @@ final class AppState: ObservableObject {
 
         return (companyItems + contactItems)
             .sorted { $0.date > $1.date }
-            .prefix(6)
+            .prefix(5)
             .map { $0 }
     }
 
@@ -44,9 +44,13 @@ final class AppState: ObservableObject {
         let loadedCompanies = store.loadCompanies()
         let loadedContacts = store.loadContacts()
 
-        companies = loadedCompanies
-        contacts = loadedContacts
-        registerTags(loadedCompanies.flatMap(\.tags) + loadedContacts.flatMap(\.tags))
+        let (cleanCompanies, cleanContacts) = purgeSampleData(
+            companies: loadedCompanies,
+            contacts: loadedContacts
+        )
+        companies = cleanCompanies
+        contacts = cleanContacts
+        registerTags(cleanCompanies.flatMap(\.tags) + cleanContacts.flatMap(\.tags))
     }
 
     func company(for id: UUID) -> CompanyDocument? {
@@ -338,5 +342,33 @@ final class AppState: ObservableObject {
                 self.updateContact(updated)
             }
         }
+    }
+
+    private func purgeSampleData(
+        companies: [CompanyDocument],
+        contacts: [ContactDocument]
+    ) -> ([CompanyDocument], [ContactDocument]) {
+        let sampleCompanyNames: Set<String> = [
+            "Aster Labs",
+            "Harbor Logistics",
+            "Summit Wellness"
+        ]
+        let sampleContactNames: Set<String> = [
+            "Lena Zhao",
+            "Arjun Patel",
+            "Yuki Tanaka"
+        ]
+
+        let removedCompanies = companies.filter { sampleCompanyNames.contains($0.name) }
+        let removedContacts = contacts.filter { sampleContactNames.contains($0.name) }
+
+        if !removedCompanies.isEmpty || !removedContacts.isEmpty {
+            removedCompanies.forEach { store.deleteCompany($0.id) }
+            removedContacts.forEach { store.deleteContact($0.id) }
+        }
+
+        let cleanedCompanies = companies.filter { !sampleCompanyNames.contains($0.name) }
+        let cleanedContacts = contacts.filter { !sampleContactNames.contains($0.name) }
+        return (cleanedCompanies, cleanedContacts)
     }
 }

@@ -21,7 +21,8 @@ struct DirectoryView: View {
     }
 
     private var filteredContacts: [ContactDocument] {
-        SearchService.filterContacts(appState.contacts, query: searchText)
+        let searched = SearchService.filterContacts(appState.contacts, query: searchText)
+        return searched.filter { contactMatchesFilters($0) }
     }
 
     private var groupedCompanies: [(key: String, items: [CompanyDocument])] {
@@ -143,7 +144,6 @@ struct DirectoryView: View {
                 } label: {
                     Label(settings.text(.filters), systemImage: "line.3.horizontal.decrease.circle")
                 }
-                .disabled(pageType != .companies)
             }
         }
         .sheet(isPresented: $isPresentingFilters) {
@@ -163,6 +163,48 @@ struct DirectoryView: View {
             }
             return (key, sortedItems)
         }
+    }
+
+    private func contactMatchesFilters(_ contact: ContactDocument) -> Bool {
+        if !filters.location.isEmpty {
+            let contactLocation = contact.location ?? ""
+            let companyLocation = company(for: contact)?.location ?? ""
+            let matches = contactLocation.lowercased().contains(filters.location.lowercased())
+                || companyLocation.lowercased().contains(filters.location.lowercased())
+            if !matches { return false }
+        }
+
+        if !filters.tag.isEmpty {
+            let matches = contact.tags.joined(separator: " ").lowercased().contains(filters.tag.lowercased())
+            if !matches { return false }
+        }
+
+        if !filters.serviceType.isEmpty {
+            let companyService = company(for: contact)?.serviceType ?? ""
+            if !companyService.lowercased().contains(filters.serviceType.lowercased()) {
+                return false
+            }
+        }
+
+        if let audience = filters.targetAudience.asAudience {
+            if company(for: contact)?.targetAudience != audience {
+                return false
+            }
+        }
+
+        if !filters.marketRegion.isEmpty {
+            let companyRegion = company(for: contact)?.marketRegion ?? ""
+            if !companyRegion.lowercased().contains(filters.marketRegion.lowercased()) {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private func company(for contact: ContactDocument) -> CompanyDocument? {
+        guard let companyID = contact.companyID else { return nil }
+        return appState.company(for: companyID)
     }
 
     private func initialLetter(from text: String) -> String {

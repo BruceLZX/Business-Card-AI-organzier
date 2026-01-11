@@ -15,6 +15,7 @@ enum AppStringKey {
     case filterTitle
     case companyLocation
     case serviceType
+    case tagFilter
     case targetAudience
     case marketRegion
     case resetFilters
@@ -103,6 +104,7 @@ enum AppStrings {
         .filterTitle: "Filters",
         .companyLocation: "Company Location",
         .serviceType: "Service Type",
+        .tagFilter: "Tag",
         .targetAudience: "Target Audience",
         .marketRegion: "Market Region",
         .resetFilters: "Reset Filters",
@@ -190,6 +192,7 @@ enum AppStrings {
         .filterTitle: "筛选",
         .companyLocation: "公司位置",
         .serviceType: "服务类型",
+        .tagFilter: "标签",
         .targetAudience: "服务对象",
         .marketRegion: "市场区域",
         .resetFilters: "重置筛选",
