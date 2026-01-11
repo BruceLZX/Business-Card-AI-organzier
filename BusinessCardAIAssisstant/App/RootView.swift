@@ -1,26 +1,38 @@
 import SwiftUI
 
 struct RootView: View {
+    @EnvironmentObject private var settings: AppSettings
+
     var body: some View {
         TabView {
             NavigationStack {
                 HomeView()
             }
             .tabItem {
-                Label("Home", systemImage: "house")
+                Label(settings.text(.captureTitle), systemImage: "camera.viewfinder")
             }
 
             NavigationStack {
-                YellowPagesView()
+                DirectoryView()
             }
             .tabItem {
-                Label("Yellow Pages", systemImage: "list.bullet.rectangle")
+                Label(settings.text(.directoryTitle), systemImage: "list.bullet.rectangle")
+            }
+
+            NavigationStack {
+                SettingsView()
+            }
+            .tabItem {
+                Label(settings.text(.settingsTitle), systemImage: "gearshape")
             }
         }
+        .tint(settings.accentColor)
+        .preferredColorScheme(settings.appearance.colorScheme)
     }
 }
 
 #Preview {
     RootView()
         .environmentObject(AppState())
+        .environmentObject(AppSettings())
 }

@@ -3,95 +3,203 @@ import UIKit
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var searchText = ""
+    @EnvironmentObject private var settings: AppSettings
     @State private var isPresentingCamera = false
+    @State private var isPresentingCreate = false
+    @State private var isProcessingOCR = false
+    @State private var capturedImage: UIImage?
+    @State private var ocrText: String = ""
+    @State private var classificationType: CreateDocumentView.DocumentType = .company
+    @State private var navigationTarget: CreateDocumentView.CreatedDocument?
 
-    private var filteredCompanies: [CompanyDocument] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return appState.companies }
-        return appState.companies.filter { $0.matchesSearch(trimmed) }
-    }
-
-    private var filteredContacts: [ContactDocument] {
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return appState.contacts }
-        return appState.contacts.filter { $0.matchesSearch(trimmed) }
-    }
+    private let ocrService = OCRService()
+    private let classifier = DocumentClassifier()
 
     var body: some View {
-        List {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(settings.text(.captureTitle))
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                    Text(settings.text(.captureSubtitle))
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                }
+
                 Button {
                     isPresentingCamera = true
                 } label: {
-                    Label("Capture Card or Brochure", systemImage: "camera")
-                }
-            }
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 26)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        settings.accentColor.opacity(0.15),
+                                        Color(.secondarySystemBackground)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 26)
+                                    .stroke(settings.accentColor.opacity(0.2), lineWidth: 1)
+                            )
 
-            if !appState.recentCaptures.isEmpty {
-                Section("Recent Captures") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(appState.recentCaptures.indices, id: \.self) { index in
-                                Image(uiImage: appState.recentCaptures[index])
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 120, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                        VStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 22)
+                                    .fill(settings.accentColor)
+                                    .frame(width: 120, height: 120)
+                                    .shadow(color: settings.accentColor.opacity(0.35), radius: 14, x: 0, y: 8)
+
+                                if isProcessingOCR {
+                                    ProgressView()
+                                        .tint(.white)
+                                        .scaleEffect(1.2)
+                                } else {
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 44, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                }
+                            }
+
+                            Text(settings.text(.addButton))
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.vertical, 24)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 220)
+                }
+                .buttonStyle(.plain)
+                .disabled(isProcessingOCR)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(settings.text(.recentDocuments))
+                        .font(.headline)
+
+                    if appState.recentDocuments.isEmpty {
+                        Text(settings.text(.noRecentDocuments))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(appState.recentDocuments) { item in
+                                NavigationLink {
+                                    destinationView(for: item)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text(item.title)
+                                                .font(.headline)
+                                            Text(item.subtitle.isEmpty ? "—" : item.subtitle)
+                                                .foregroundStyle(.secondary)
+                                                .font(.subheadline)
+                                        }
+                                        Spacer()
+                                        Text(item.kind == .company ? settings.text(.company) : settings.text(.contact))
+                                            .font(.caption)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                Capsule()
+                                                    .fill(Color(.secondarySystemBackground))
+                                            )
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(14)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .fill(Color(.secondarySystemBackground))
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .padding(.vertical, 4)
                     }
                 }
             }
-
-            Section("Companies") {
-                if filteredCompanies.isEmpty {
-                    Text("No companies found")
-                        .foregroundStyle(.secondary)
+            .padding(20)
+        }
+        .background(
+            LinearGradient(
+                colors: [
+                    settings.accentColor.opacity(0.10),
+                    Color(.systemBackground)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .sheet(isPresented: $isPresentingCamera) {
+            CameraView { image in
+                handleCapture(image)
+            }
+        }
+        .sheet(isPresented: $isPresentingCreate) {
+            CreateDocumentView(
+                image: capturedImage,
+                ocrText: ocrText,
+                initialType: classificationType
+            ) { created in
+                navigationTarget = created
+            }
+                .environmentObject(appState)
+                .environmentObject(settings)
+        }
+        .navigationDestination(item: $navigationTarget) { target in
+            switch target.kind {
+            case .company:
+                if let company = appState.company(for: target.id) {
+                    CompanyDetailView(company: company)
                 } else {
-                    ForEach(filteredCompanies) { company in
-                        NavigationLink {
-                            CompanyDetailView(company: company)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(company.name)
-                                    .font(.headline)
-                                Text(company.summary)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+                    Text(settings.text(.noCompanies))
+                }
+            case .contact:
+                if let contact = appState.contact(for: target.id) {
+                    ContactDetailView(contact: contact)
+                } else {
+                    Text(settings.text(.noContacts))
                 }
             }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+    }
 
-            Section("Contacts") {
-                if filteredContacts.isEmpty {
-                    Text("No contacts found")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(filteredContacts) { contact in
-                        NavigationLink {
-                            ContactDetailView(contact: contact)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(contact.name)
-                                    .font(.headline)
-                                Text("\(contact.title) · \(contact.companyName)")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+    private func handleCapture(_ image: UIImage) {
+        capturedImage = image
+        isProcessingOCR = true
+        ocrService.recognizeText(in: image) { result in
+            DispatchQueue.main.async {
+                ocrText = result?.text ?? ""
+                classifier.classify(text: ocrText) { type in
+                    DispatchQueue.main.async {
+                        isProcessingOCR = false
+                        classificationType = (type == .contact) ? .contact : .company
+                        isPresentingCreate = true
+                        appState.addCapture(image)
                     }
                 }
             }
         }
-        .navigationTitle("Home")
-        .searchable(text: $searchText, prompt: "Search people, companies, keywords")
-        .sheet(isPresented: $isPresentingCamera) {
-            CameraView { image in
-                appState.addCapture(image)
+    }
+
+    @ViewBuilder
+    private func destinationView(for item: RecentDocument) -> some View {
+        switch item.kind {
+        case .company:
+            if let company = appState.company(for: item.id) {
+                CompanyDetailView(company: company)
+            } else {
+                Text(settings.text(.noCompanies))
+            }
+        case .contact:
+            if let contact = appState.contact(for: item.id) {
+                ContactDetailView(contact: contact)
+            } else {
+                Text(settings.text(.noContacts))
             }
         }
     }
@@ -101,5 +209,6 @@ struct HomeView: View {
     NavigationStack {
         HomeView()
             .environmentObject(AppState())
+            .environmentObject(AppSettings())
     }
 }

@@ -31,3 +31,12 @@ fastlane/test_output/
 
 # Package caches
 .package.resolved
+
+# Secrets
+.env
+Secrets.plist
+Secrets.xcconfig
+Secrets*.xcconfig
+
+# Local assets
+BusinessCardAI.png

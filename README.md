@@ -19,18 +19,26 @@ The app turns offline business materials into a searchable relationship graph of
 ### Core Features
 - Capture: photo scan for business cards and brochures
 - OCR extraction: local text recognition via Apple Vision
+- Document creation: create company/contact documents from OCR output
+- GPT classification: determine contact vs company before creation
+- Review before creation: user confirms fields and document type before saving
 - Document generation:
   - Company document: company info, services, related contacts, contact links, original photos
   - Contact document: person info, role, contact methods, company link, original photos
 - Search and filter: by name, company, business keywords
 - Manual edit: users can correct and enrich extracted data
+- Duplicate handling: detect existing contacts and confirm updates
+- Manual enrichment: user-triggered online search for profile completion
+- Recent documents: show latest created Company/Contact entries on the Capture page
 
 ### Information Architecture / Pages
-- Home
-  - Global search bar for people, companies, and keywords
-- Yellow Pages
-  - Toggle between Company and Contact lists
+- Capture
+  - Large capture button and recent documents
+- Directory
+  - Search across companies/contacts and toggle list type
   - Filters: company location, service type, target audience (B2B/B2C), market region
+- Settings
+  - Appearance mode (system/light/dark), language, and default preferences
 - Company detail page
   - Company profile and services
   - Related contacts with jump links
@@ -54,7 +62,7 @@ The app turns offline business materials into a searchable relationship graph of
 
 ### Non-Functional Requirements
 - Privacy: local-first storage; cloud sync optional later
-- Traceability: keep original photos and extraction sources
+- Traceability: keep original photos; OCR text not stored by default
 - Extensibility: swap or add extraction providers (Vision OCR now)
 
 ### Account & Sync (Future)
@@ -68,7 +76,8 @@ The app turns offline business materials into a searchable relationship graph of
   - Models/: CompanyDocument, ContactDocument, etc.
   - Services/
     - CaptureService: photo capture and image management
-    - OCRService: AI extraction and parsing (provider TBD)
+    - OCRService: Vision-based text recognition
+    - EnrichmentService: online enrichment stub (API to be configured locally)
     - SearchService: indexing and query
   - Storage/
     - LocalStore: local DB and image store
@@ -86,11 +95,25 @@ The app turns offline business materials into a searchable relationship graph of
 | Test & iterate | Week 6 | Core flow tests, bug fixes |
 
 ## Status
-- Done: baseline structure and documentation
-- In progress: AI extraction provider selection
+- Done: OCR capture, review-before-create flow, document creation, and manual enrichment flow
+- In progress: enrichment refinement and UI polish
 
 ## Next Steps
-- Wire OCR output into company/contact creation flow
+- Refine enrichment field mapping (website/phone/address)
+- Add online enrichment client (configure API key locally; do not commit)
 - Define search indexing strategy (CJK tokenization/keywords)
 - Plan optional backup and sync
-- Future: use AI to enrich profiles by searching LinkedIn and China-based platforms
+
+## Configuration (Local Only)
+- Add your API key to `BusinessCardAIAssisstant/Secrets.xcconfig` with `OPENAI_API_KEY = ...`.
+- The enrichment client uses the `gpt-4o-mini` model for cost efficiency.
+- Do not commit secrets; `.gitignore` already excludes these files.
+- Device run requires Camera permission (NSCameraUsageDescription is configured in the Xcode project).
+ - First run starts with an empty dataset (no sample data).
+
+## Assets
+- App icon source: `BusinessCardAI.png` (copied into `BusinessCardAIAssisstant/Assets.xcassets/AppIcon.appiconset`).
+
+## Changelog
+- 2026-01-11: Added settings (appearance mode, language, defaults), Directory search, OCR service, GPT classification, and manual enrichment client (mini model).
+- 2026-01-11: Removed sample data, added review-before-create flow, recent documents list, and updated app icon.

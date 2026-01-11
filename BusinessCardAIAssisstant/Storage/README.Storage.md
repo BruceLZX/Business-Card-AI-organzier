@@ -1,6 +1,6 @@
 # Storage
 
-[中文说明 / Chinese](README.zh.md)
+[中文说明 / Chinese](README.Storage.zh.md)
 
 Local persistence layer for documents and photos.
 

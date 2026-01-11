@@ -3,9 +3,16 @@ import Foundation
 struct CompanyDocument: Identifiable, Hashable, Codable {
     let id: UUID
     var name: String
+    var originalName: String?
     var summary: String
     var serviceKeywords: [String]
     var website: String
+    var linkedinURL: String?
+    var industry: String?
+    var companySize: String?
+    var revenue: String?
+    var foundedYear: String?
+    var headquarters: String?
     var address: String
     var phone: String
     var location: String
@@ -16,12 +23,20 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
     var tags: [String]
     var relatedContactIDs: [UUID]
     var photoIDs: [UUID]
+    var sourceLanguageCode: String?
+    var enrichedAt: Date?
+    var createdAt: Date?
 
     func matchesSearch(_ query: String) -> Bool {
         let lowered = query.lowercased()
         if name.lowercased().contains(lowered) { return true }
+        if (originalName ?? "").lowercased().contains(lowered) { return true }
         if summary.lowercased().contains(lowered) { return true }
         if serviceKeywords.joined(separator: " ").lowercased().contains(lowered) { return true }
+        if (industry ?? "").lowercased().contains(lowered) { return true }
+        if (companySize ?? "").lowercased().contains(lowered) { return true }
+        if (revenue ?? "").lowercased().contains(lowered) { return true }
+        if (headquarters ?? "").lowercased().contains(lowered) { return true }
         if notes.lowercased().contains(lowered) { return true }
         if tags.joined(separator: " ").lowercased().contains(lowered) { return true }
         return false
