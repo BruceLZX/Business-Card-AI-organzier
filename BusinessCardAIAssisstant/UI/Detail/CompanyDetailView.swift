@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct CompanyDetailView: View {
     @EnvironmentObject private var appState: AppState
     @State private var draft: CompanyDocument
     @State private var isEditing = false
+    @State private var isPresentingCamera = false
 
     init(company: CompanyDocument) {
         _draft = State(initialValue: company)
@@ -22,6 +24,14 @@ struct CompanyDetailView: View {
                     TextField("Website", text: $draft.website)
                     TextField("Phone", text: $draft.phone)
                     TextField("Address", text: $draft.address)
+                    TextField("Notes", text: $draft.notes, axis: .vertical)
+                    TextField(
+                        "Tags",
+                        text: Binding(
+                            get: { draft.tags.joined(separator: ", ") },
+                            set: { draft.tags = $0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) } }
+                        )
+                    )
                 } else {
                     Text(draft.name)
                         .font(.headline)
@@ -30,6 +40,14 @@ struct CompanyDetailView: View {
                     Text(draft.website)
                     Text(draft.phone)
                     Text(draft.address)
+                    if !draft.notes.isEmpty {
+                        Text(draft.notes)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !draft.tags.isEmpty {
+                        Text("Tags: \(draft.tags.joined(separator: ", "))")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -86,16 +104,30 @@ struct CompanyDetailView: View {
             }
 
             Section("Photos") {
+                Button {
+                    isPresentingCamera = true
+                } label: {
+                    Label("Add Photo", systemImage: "camera")
+                }
+
                 if draft.photoIDs.isEmpty {
                     Text("No photos attached")
                         .foregroundStyle(.secondary)
                 } else {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(draft.photoIDs, id: \.self) { _ in
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(.gray.opacity(0.2))
-                                    .frame(width: 120, height: 80)
+                            ForEach(draft.photoIDs, id: \.self) { photoID in
+                                if let image = appState.loadCompanyPhoto(companyID: draft.id, photoID: photoID) {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 120, height: 80)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                } else {
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(.gray.opacity(0.2))
+                                        .frame(width: 120, height: 80)
+                                }
                             }
                         }
                         .padding(.vertical, 4)
@@ -127,6 +159,13 @@ struct CompanyDetailView: View {
         .onAppear {
             if let current = appState.company(for: draft.id) {
                 draft = current
+            }
+        }
+        .sheet(isPresented: $isPresentingCamera) {
+            CameraView { image in
+                if let photoID = appState.addCompanyPhoto(companyID: draft.id, image: image) {
+                    draft.photoIDs.insert(photoID, at: 0)
+                }
             }
         }
     }

@@ -1,12 +1,13 @@
 import Foundation
 
-struct ContactDocument: Identifiable, Hashable {
+struct ContactDocument: Identifiable, Hashable, Codable {
     let id: UUID
     var name: String
     var title: String
     var phone: String
     var email: String
     var notes: String
+    var tags: [String]
     var companyID: UUID?
     var companyName: String
     var photoIDs: [UUID]
@@ -16,6 +17,8 @@ struct ContactDocument: Identifiable, Hashable {
         if name.lowercased().contains(lowered) { return true }
         if title.lowercased().contains(lowered) { return true }
         if companyName.lowercased().contains(lowered) { return true }
+        if notes.lowercased().contains(lowered) { return true }
+        if tags.joined(separator: " ").lowercased().contains(lowered) { return true }
         return false
     }
 }

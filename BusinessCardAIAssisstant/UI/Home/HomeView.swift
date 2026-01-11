@@ -5,7 +5,6 @@ struct HomeView: View {
     @EnvironmentObject private var appState: AppState
     @State private var searchText = ""
     @State private var isPresentingCamera = false
-    @State private var recentCaptures: [UIImage] = []
 
     private var filteredCompanies: [CompanyDocument] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -29,12 +28,12 @@ struct HomeView: View {
                 }
             }
 
-            if !recentCaptures.isEmpty {
+            if !appState.recentCaptures.isEmpty {
                 Section("Recent Captures") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
-                            ForEach(recentCaptures.indices, id: \.self) { index in
-                                Image(uiImage: recentCaptures[index])
+                            ForEach(appState.recentCaptures.indices, id: \.self) { index in
+                                Image(uiImage: appState.recentCaptures[index])
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: 120, height: 80)
@@ -92,7 +91,7 @@ struct HomeView: View {
         .searchable(text: $searchText, prompt: "Search people, companies, keywords")
         .sheet(isPresented: $isPresentingCamera) {
             CameraView { image in
-                recentCaptures.insert(image, at: 0)
+                appState.addCapture(image)
             }
         }
     }

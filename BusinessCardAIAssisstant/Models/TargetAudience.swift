@@ -1,6 +1,6 @@
 import Foundation
 
-enum TargetAudience: String, CaseIterable, Identifiable {
+enum TargetAudience: String, CaseIterable, Identifiable, Codable {
     case b2b = "B2B"
     case b2c = "B2C"
 

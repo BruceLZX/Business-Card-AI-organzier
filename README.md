@@ -18,7 +18,7 @@ The app turns offline business materials into a searchable relationship graph of
 
 ### Core Features
 - Capture: photo scan for business cards and brochures
-- AI extraction: parse company info, services, and contact details (provider TBD)
+- OCR extraction: local text recognition via Apple Vision
 - Document generation:
   - Company document: company info, services, related contacts, contact links, original photos
   - Contact document: person info, role, contact methods, company link, original photos
@@ -55,7 +55,7 @@ The app turns offline business materials into a searchable relationship graph of
 ### Non-Functional Requirements
 - Privacy: local-first storage; cloud sync optional later
 - Traceability: keep original photos and extraction sources
-- Extensibility: swap or add AI extraction providers
+- Extensibility: swap or add extraction providers (Vision OCR now)
 
 ### Account & Sync (Future)
 - Local-only storage in MVP
@@ -90,6 +90,7 @@ The app turns offline business materials into a searchable relationship graph of
 - In progress: AI extraction provider selection
 
 ## Next Steps
-- Decide AI provider and field mapping
+- Wire OCR output into company/contact creation flow
 - Define search indexing strategy (CJK tokenization/keywords)
 - Plan optional backup and sync
+- Future: use AI to enrich profiles by searching LinkedIn and China-based platforms

@@ -1,6 +1,6 @@
 import Foundation
 
-struct CompanyDocument: Identifiable, Hashable {
+struct CompanyDocument: Identifiable, Hashable, Codable {
     let id: UUID
     var name: String
     var summary: String
@@ -12,6 +12,8 @@ struct CompanyDocument: Identifiable, Hashable {
     var serviceType: String
     var targetAudience: TargetAudience
     var marketRegion: String
+    var notes: String
+    var tags: [String]
     var relatedContactIDs: [UUID]
     var photoIDs: [UUID]
 
@@ -20,6 +22,8 @@ struct CompanyDocument: Identifiable, Hashable {
         if name.lowercased().contains(lowered) { return true }
         if summary.lowercased().contains(lowered) { return true }
         if serviceKeywords.joined(separator: " ").lowercased().contains(lowered) { return true }
+        if notes.lowercased().contains(lowered) { return true }
+        if tags.joined(separator: " ").lowercased().contains(lowered) { return true }
         return false
     }
 
