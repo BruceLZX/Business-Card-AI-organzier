@@ -16,6 +16,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
     var address: String
     var phone: String
     var location: String
+    var originalLocation: String?
     var serviceType: String
     var targetAudience: TargetAudience
     var marketRegion: String
@@ -48,8 +49,13 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
     }
 
     func matches(filters: FilterOptions) -> Bool {
-        if !filters.location.isEmpty && !location.lowercased().contains(filters.location.lowercased()) {
-            return false
+        if !filters.location.isEmpty {
+            let query = filters.location.lowercased()
+            let primaryMatch = location.lowercased().contains(query)
+            let originalMatch = (originalLocation ?? "").lowercased().contains(query)
+            if !primaryMatch && !originalMatch {
+                return false
+            }
         }
         if !filters.serviceType.isEmpty && !serviceType.lowercased().contains(filters.serviceType.lowercased()) {
             return false

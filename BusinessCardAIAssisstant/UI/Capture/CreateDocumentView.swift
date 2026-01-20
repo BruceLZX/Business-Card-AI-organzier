@@ -39,7 +39,8 @@ struct CreateDocumentView: View {
                     department: $0.department,
                     phone: $0.phone,
                     email: $0.email,
-                    location: $0.location,
+                    locationEN: $0.locationEN,
+                    locationZH: $0.locationZH,
                     website: $0.website,
                     linkedin: $0.linkedin,
                     companyNameEN: $0.companyNameEN,
@@ -55,7 +56,8 @@ struct CreateDocumentView: View {
                     summary: $0.summary,
                     industry: $0.industry,
                     serviceType: $0.serviceType,
-                    location: $0.location,
+                    locationEN: $0.locationEN,
+                    locationZH: $0.locationZH,
                     marketRegion: $0.marketRegion,
                     website: $0.website,
                     phone: $0.phone,
@@ -75,7 +77,8 @@ struct CreateDocumentView: View {
         let department: String?
         let phone: String
         let email: String
-        let location: String?
+        let locationEN: String?
+        let locationZH: String?
         let website: String?
         let linkedin: String?
         let companyNameEN: String
@@ -90,7 +93,8 @@ struct CreateDocumentView: View {
         let summary: String
         let industry: String?
         let serviceType: String?
-        let location: String?
+        let locationEN: String?
+        let locationZH: String?
         let marketRegion: String?
         let website: String?
         let phone: String?
@@ -118,6 +122,7 @@ struct CreateDocumentView: View {
     @State private var contactPhone = ""
     @State private var contactEmail = ""
     @State private var contactLocation = ""
+    @State private var contactOriginalLocation = ""
     @State private var contactWebsite = ""
     @State private var contactLinkedin = ""
     @State private var contactNotes = ""
@@ -129,6 +134,7 @@ struct CreateDocumentView: View {
     @State private var companyIndustry = ""
     @State private var companyServiceType = ""
     @State private var companyLocation = ""
+    @State private var companyOriginalLocation = ""
     @State private var companyMarketRegion = ""
     @State private var companyWebsite = ""
     @State private var companyLinkedin = ""
@@ -433,6 +439,7 @@ struct CreateDocumentView: View {
     }
 
     private func saveCompany() -> UUID {
+        let resolvedLocation = companyLocation.isEmpty ? companyOriginalLocation : companyLocation
         let company = CompanyDocument(
             id: UUID(),
             name: companyName,
@@ -448,7 +455,8 @@ struct CreateDocumentView: View {
             headquarters: companyHeadquarters.isEmpty ? nil : companyHeadquarters,
             address: companyAddress,
             phone: companyPhone,
-            location: companyLocation,
+            location: resolvedLocation,
+            originalLocation: companyOriginalLocation.isEmpty ? nil : companyOriginalLocation,
             serviceType: companyServiceType,
             targetAudience: .b2b,
             marketRegion: companyMarketRegion,
@@ -471,6 +479,7 @@ struct CreateDocumentView: View {
 
     private func saveNewContact(linkCompanyID: UUID?) -> UUID? {
         let linkedCompany = linkCompanyID.flatMap { appState.company(for: $0) }
+        let resolvedLocation = contactLocation.isEmpty ? contactOriginalLocation : contactLocation
         let contact = ContactDocument(
             id: UUID(),
             name: contactName,
@@ -479,7 +488,8 @@ struct CreateDocumentView: View {
             department: contactDepartment.isEmpty ? nil : contactDepartment,
             phone: contactPhone,
             email: contactEmail,
-            location: contactLocation.isEmpty ? nil : contactLocation,
+            location: resolvedLocation.isEmpty ? nil : resolvedLocation,
+            originalLocation: contactOriginalLocation.isEmpty ? nil : contactOriginalLocation,
             website: contactWebsite.isEmpty ? nil : contactWebsite,
             linkedinURL: contactLinkedin.isEmpty ? nil : contactLinkedin,
             notes: contactNotes,
@@ -561,7 +571,9 @@ struct CreateDocumentView: View {
         if !companySummary.isEmpty { updated.summary = companySummary }
         if !companyIndustry.isEmpty { updated.industry = companyIndustry }
         if !companyServiceType.isEmpty { updated.serviceType = companyServiceType }
-        if !companyLocation.isEmpty { updated.location = companyLocation }
+        let resolvedLocation = companyLocation.isEmpty ? companyOriginalLocation : companyLocation
+        if !resolvedLocation.isEmpty { updated.location = resolvedLocation }
+        if !companyOriginalLocation.isEmpty { updated.originalLocation = companyOriginalLocation }
         if !companyMarketRegion.isEmpty { updated.marketRegion = companyMarketRegion }
         if !companyWebsite.isEmpty { updated.website = companyWebsite }
         if !companyLinkedin.isEmpty { updated.linkedinURL = companyLinkedin }
@@ -585,7 +597,9 @@ struct CreateDocumentView: View {
         if let department = contactDepartment.isEmpty ? nil : contactDepartment { updated.department = department }
         if !contactPhone.isEmpty { updated.phone = contactPhone }
         if !contactEmail.isEmpty { updated.email = contactEmail }
-        if let location = contactLocation.isEmpty ? nil : contactLocation { updated.location = location }
+        let resolvedLocation = contactLocation.isEmpty ? contactOriginalLocation : contactLocation
+        if !resolvedLocation.isEmpty { updated.location = resolvedLocation }
+        if !contactOriginalLocation.isEmpty { updated.originalLocation = contactOriginalLocation }
         if let website = contactWebsite.isEmpty ? nil : contactWebsite { updated.website = website }
         if let linkedin = contactLinkedin.isEmpty ? nil : contactLinkedin { updated.linkedinURL = linkedin }
         if !contactNotes.isEmpty {
@@ -619,11 +633,11 @@ struct CreateDocumentView: View {
         let inputVariants = companyNameVariants(companyName)
         guard !inputVariants.isEmpty else { return [] }
 
-        let inputLocation = normalized("\(companyLocation) \(companyAddress)")
+        let inputLocation = normalized("\(companyLocation) \(companyOriginalLocation) \(companyAddress)")
         let matches = appState.companies.compactMap { company -> (CompanyDocument, Double)? in
             let companyVariants = companyNameVariants(company.name) + companyNameVariants(company.originalName ?? "")
             let nameScore = bestNameScore(inputVariants: inputVariants, companyVariants: companyVariants)
-            let companyLocation = normalized("\(company.location) \(company.address) \(company.headquarters ?? "")")
+            let companyLocation = normalized("\(company.location) \(company.originalLocation ?? "") \(company.address) \(company.headquarters ?? "")")
             let locationScore = inputLocation.isEmpty || companyLocation.isEmpty ? 0 : tokenJaccard(inputLocation, companyLocation)
             let score = inputLocation.isEmpty ? nameScore : (nameScore * 0.8 + locationScore * 0.2)
             return score >= 0.85 ? (company, score) : nil
@@ -846,7 +860,7 @@ struct CreateDocumentView: View {
         styledTextField(settings.text(.foundedYear), text: $companyFoundedYear, isBlue: isBlue)
         styledTextField(settings.text(.headquarters), text: $companyHeadquarters, isBlue: isBlue)
         styledTextField(settings.text(.serviceTypeLabel), text: $companyServiceType, isBlue: isBlue)
-        styledTextField(settings.text(.location), text: $companyLocation, isBlue: isBlue)
+        styledTextField(settings.text(.location), text: companyLocationBinding, isBlue: isBlue)
         styledTextField(settings.text(.marketRegionLabel), text: $companyMarketRegion, isBlue: isBlue)
         styledTextField(settings.text(.website), text: $companyWebsite, isBlue: isBlue)
         styledTextField(settings.text(.linkedin), text: $companyLinkedin, isBlue: isBlue)
@@ -860,7 +874,7 @@ struct CreateDocumentView: View {
         styledTextField(settings.text(.originalName), text: $contactOriginalName, isBlue: isBlue)
         styledTextField(settings.text(.title), text: $contactTitle, isBlue: isBlue)
         styledTextField(settings.text(.department), text: $contactDepartment, isBlue: isBlue)
-        styledTextField(settings.text(.location), text: $contactLocation, isBlue: isBlue)
+        styledTextField(settings.text(.location), text: contactLocationBinding, isBlue: isBlue)
         styledTextField(settings.text(.phone), text: $contactPhone, isBlue: isBlue)
         styledTextField(settings.text(.email), text: $contactEmail, isBlue: isBlue)
         styledTextField(settings.text(.personalSite), text: $contactWebsite, isBlue: isBlue)
@@ -871,6 +885,47 @@ struct CreateDocumentView: View {
         TextField(title, text: text, axis: axis)
             .foregroundStyle(isBlue ? .blue : .primary)
             .tint(isBlue ? .blue : nil)
+    }
+
+    private var contactLocationBinding: Binding<String> {
+        Binding(
+            get: {
+                settings.language == .chinese ? contactOriginalLocation : contactLocation
+            },
+            set: { newValue in
+                if settings.language == .chinese {
+                    contactOriginalLocation = newValue
+                } else {
+                    contactLocation = newValue
+                }
+            }
+        )
+    }
+
+    private var companyLocationBinding: Binding<String> {
+        Binding(
+            get: {
+                settings.language == .chinese ? companyOriginalLocation : companyLocation
+            },
+            set: { newValue in
+                if settings.language == .chinese {
+                    companyOriginalLocation = newValue
+                } else {
+                    companyLocation = newValue
+                }
+            }
+        )
+    }
+
+    private func localizedDisplay(primary: String, fallback: String?) -> String {
+        let preferred: String
+        switch settings.language {
+        case .chinese:
+            preferred = fallback ?? primary
+        case .english:
+            preferred = primary.isEmpty ? (fallback ?? "") : primary
+        }
+        return preferred.isEmpty ? (fallback ?? primary) : preferred
     }
 
     private func existingCompanyInfoView(_ company: CompanyDocument) -> some View {
@@ -888,7 +943,8 @@ struct CreateDocumentView: View {
             if let founded = company.foundedYear, !founded.isEmpty { infoRow(settings.text(.foundedYear), founded) }
             if let hq = company.headquarters, !hq.isEmpty { infoRow(settings.text(.headquarters), hq) }
             if !company.serviceType.isEmpty { infoRow(settings.text(.serviceTypeLabel), company.serviceType) }
-            if !company.location.isEmpty { infoRow(settings.text(.location), company.location) }
+            let companyLocation = localizedDisplay(primary: company.location, fallback: company.originalLocation)
+            if !companyLocation.isEmpty { infoRow(settings.text(.location), companyLocation) }
             if !company.marketRegion.isEmpty { infoRow(settings.text(.marketRegionLabel), company.marketRegion) }
             if !company.website.isEmpty { infoRow(settings.text(.website), company.website) }
             if let linkedin = company.linkedinURL, !linkedin.isEmpty { infoRow(settings.text(.linkedin), linkedin) }
@@ -913,8 +969,9 @@ struct CreateDocumentView: View {
             if let department = contact.department, !department.isEmpty {
                 infoRow(settings.text(.department), department)
             }
-            if let location = contact.location, !location.isEmpty {
-                infoRow(settings.text(.location), location)
+            let contactLocation = localizedDisplay(primary: contact.location ?? "", fallback: contact.originalLocation)
+            if !contactLocation.isEmpty {
+                infoRow(settings.text(.location), contactLocation)
             }
             if !contact.phone.isEmpty { infoRow(settings.text(.phone), contact.phone) }
             if !contact.email.isEmpty { infoRow(settings.text(.email), contact.email) }
@@ -1086,7 +1143,8 @@ struct CreateDocumentView: View {
         setIfEmpty(&contactDepartment, contact.department)
         setIfEmpty(&contactPhone, contact.phone)
         setIfEmpty(&contactEmail, contact.email)
-        setIfEmpty(&contactLocation, contact.location)
+        setIfEmpty(&contactLocation, contact.locationEN)
+        setIfEmpty(&contactOriginalLocation, contact.locationZH)
         setIfEmpty(&contactWebsite, contact.website)
         setIfEmpty(&contactLinkedin, contact.linkedin)
         setIfEmpty(&contactNotes, contact.notes)
@@ -1101,7 +1159,8 @@ struct CreateDocumentView: View {
         setIfEmpty(&companySummary, company.summary)
         setIfEmpty(&companyIndustry, company.industry)
         setIfEmpty(&companyServiceType, company.serviceType)
-        setIfEmpty(&companyLocation, company.location)
+        setIfEmpty(&companyLocation, company.locationEN)
+        setIfEmpty(&companyOriginalLocation, company.locationZH)
         setIfEmpty(&companyMarketRegion, company.marketRegion)
         setIfEmpty(&companyWebsite, company.website)
         setIfEmpty(&companyPhone, company.phone)

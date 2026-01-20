@@ -229,6 +229,7 @@ final class AppState: ObservableObject {
             address: "",
             phone: "",
             location: "",
+            originalLocation: nil,
             serviceType: "",
             targetAudience: .b2b,
             marketRegion: "",
@@ -399,6 +400,10 @@ final class AppState: ObservableObject {
     func enrichCompany(companyID: UUID, completion: ((Bool, String) -> Void)? = nil) {
         guard let company = company(for: companyID) else { return }
         guard !isEnrichingGlobal else { return }
+        guard enrichmentService.hasValidAPIKey() else {
+            completion?(false, "missing_api_key")
+            return
+        }
         startEnrichmentProgress()
         let context = [
             company.originalName,
@@ -470,7 +475,8 @@ final class AppState: ObservableObject {
                 }
                 if !result.tags.isEmpty {
                     let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
-                    let poolMap = Dictionary(uniqueKeysWithValues: tagPool.map { ($0.lowercased(), $0) })
+                    let pool = self.tagPool
+                    let poolMap = Dictionary(uniqueKeysWithValues: pool.map { ($0.lowercased(), $0) })
                     let normalizedTags = filteredTags.map { tag in
                         let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return "" }
@@ -515,16 +521,22 @@ final class AppState: ObservableObject {
     func enrichContact(contactID: UUID, completion: ((Bool, String) -> Void)? = nil) {
         guard let contact = contact(for: contactID) else { return }
         guard !isEnrichingGlobal else { return }
+        guard enrichmentService.hasValidAPIKey() else {
+            completion?(false, "missing_api_key")
+            return
+        }
         startEnrichmentProgress()
-        let context = [
+        let contextParts: [String?] = [
             contact.title,
             contact.department,
             contact.location,
             contact.companyName,
             contact.originalCompanyName
         ]
-        .filter { !$0.isEmpty }
-        .joined(separator: " | ")
+        let context = contextParts
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " | ")
         let request = EnrichmentRequest(
             type: .contact,
             name: contact.name,
@@ -582,7 +594,8 @@ final class AppState: ObservableObject {
                 }
                 if !result.tags.isEmpty {
                     let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
-                    let poolMap = Dictionary(uniqueKeysWithValues: tagPool.map { ($0.lowercased(), $0) })
+                    let pool = self.tagPool
+                    let poolMap = Dictionary(uniqueKeysWithValues: pool.map { ($0.lowercased(), $0) })
                     let normalizedTags = filteredTags.map { tag in
                         let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return "" }

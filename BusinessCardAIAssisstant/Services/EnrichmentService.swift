@@ -63,7 +63,8 @@ struct OCRContact {
     let department: String?
     let phone: String
     let email: String
-    let location: String?
+    let locationEN: String?
+    let locationZH: String?
     let website: String?
     let linkedin: String?
     let companyNameEN: String
@@ -78,7 +79,8 @@ struct OCRCompany {
     let summary: String
     let industry: String?
     let serviceType: String?
-    let location: String?
+    let locationEN: String?
+    let locationZH: String?
     let marketRegion: String?
     let website: String?
     let phone: String?
@@ -159,6 +161,8 @@ private struct OCRPayload: Decodable {
         let department: String?
         let phone: String?
         let email: String?
+        let location_en: String?
+        let location_zh: String?
         let location: String?
         let website: String?
         let linkedin: String?
@@ -176,7 +180,8 @@ private struct OCRPayload: Decodable {
                 department: department?.isEmpty == false ? department : nil,
                 phone: phone ?? "",
                 email: email ?? "",
-                location: location?.isEmpty == false ? location : nil,
+                locationEN: location_en?.isEmpty == false ? location_en : (location?.isEmpty == false ? location : nil),
+                locationZH: location_zh?.isEmpty == false ? location_zh : nil,
                 website: website?.isEmpty == false ? website : nil,
                 linkedin: linkedin?.isEmpty == false ? linkedin : nil,
                 companyNameEN: company_name_en ?? "",
@@ -193,6 +198,8 @@ private struct OCRPayload: Decodable {
         let summary: String?
         let industry: String?
         let service_type: String?
+        let location_en: String?
+        let location_zh: String?
         let location: String?
         let market_region: String?
         let website: String?
@@ -209,7 +216,8 @@ private struct OCRPayload: Decodable {
                 summary: summary ?? "",
                 industry: industry?.isEmpty == false ? industry : nil,
                 serviceType: service_type?.isEmpty == false ? service_type : nil,
-                location: location?.isEmpty == false ? location : nil,
+                locationEN: location_en?.isEmpty == false ? location_en : (location?.isEmpty == false ? location : nil),
+                locationZH: location_zh?.isEmpty == false ? location_zh : nil,
                 marketRegion: market_region?.isEmpty == false ? market_region : nil,
                 website: website?.isEmpty == false ? website : nil,
                 phone: phone?.isEmpty == false ? phone : nil,
@@ -246,6 +254,11 @@ protocol EnrichmentProviding {
 final class EnrichmentService: EnrichmentProviding {
     private let client = OpenAIClient()
     private let thinkingModel = "o3-mini"
+
+    func hasValidAPIKey() -> Bool {
+        guard let apiKey = client.apiKey else { return false }
+        return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     func buildPrompt(for request: EnrichmentRequest) -> String {
         let typeLabel = request.type == .company ? "company" : "contact"

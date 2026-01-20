@@ -93,6 +93,7 @@ enum AppStringKey {
     case undoReplace
     case enrichFailedTitle
     case enrichFailedMessage
+    case enrichMissingKeyMessage
     case enrichNoChangesMessage
     case originalValue
     case enrichStageAnalyzing
@@ -109,6 +110,7 @@ enum AppStringKey {
     case headquarters
     case originalName
     case originalCompanyName
+    case originalLocation
     case profile
     case links
     case companyDetails
@@ -226,6 +228,7 @@ enum AppStrings {
         .undoReplace: "Undo replace",
         .enrichFailedTitle: "Enrichment Failed",
         .enrichFailedMessage: "We couldn't fetch enrichment data right now. Please try again later.",
+        .enrichMissingKeyMessage: "Missing API key. Add it to AIConfig.swift and try again.",
         .enrichNoChangesMessage: "No new information was found for this profile.",
         .originalValue: "Original",
         .enrichStageAnalyzing: "Analyzing photos",
@@ -242,6 +245,7 @@ enum AppStrings {
         .headquarters: "Headquarters",
         .originalName: "Chinese Name",
         .originalCompanyName: "Chinese Company Name",
+        .originalLocation: "Chinese Location",
         .profile: "Profile",
         .links: "Links",
         .companyDetails: "Company Details",
@@ -358,6 +362,7 @@ enum AppStrings {
         .undoReplace: "撤销替换",
         .enrichFailedTitle: "补全失败",
         .enrichFailedMessage: "暂时无法获取补全信息，请稍后再试。",
+        .enrichMissingKeyMessage: "未检测到 API Key，请在 AIConfig.swift 中填写后重试。",
         .enrichNoChangesMessage: "未找到新的补全信息。",
         .originalValue: "原有内容",
         .enrichStageAnalyzing: "正在分析照片",
@@ -374,6 +379,7 @@ enum AppStrings {
         .headquarters: "总部",
         .originalName: "中文名",
         .originalCompanyName: "中文公司名",
+        .originalLocation: "中文位置",
         .profile: "档案",
         .links: "链接",
         .companyDetails: "公司详情",

@@ -51,6 +51,31 @@ struct CompanyDetailView: View {
         return draft.name
     }
 
+    private var displayLocation: String {
+        if showOriginalName, let original = draft.originalLocation, !original.isEmpty {
+            return original
+        }
+        return draft.location
+    }
+
+    private var locationBinding: Binding<String> {
+        Binding(
+            get: {
+                if showOriginalName {
+                    return draft.originalLocation ?? ""
+                }
+                return draft.location
+            },
+            set: { newValue in
+                if showOriginalName {
+                    draft.originalLocation = newValue
+                } else {
+                    draft.location = newValue
+                }
+            }
+        )
+    }
+
     private var isEnriching: Bool {
         appState.isEnrichingGlobal
     }
@@ -167,9 +192,16 @@ struct CompanyDetailView: View {
                 appState.enrichCompany(companyID: draft.id) { success, code in
                     DispatchQueue.main.async {
                         if !success {
-                            enrichErrorMessage = code == "no_changes"
-                            ? settings.text(.enrichNoChangesMessage)
-                            : settings.text(.enrichFailedMessage)
+                            enrichErrorMessage = {
+                                switch code {
+                                case "no_changes":
+                                    return settings.text(.enrichNoChangesMessage)
+                                case "missing_api_key":
+                                    return settings.text(.enrichMissingKeyMessage)
+                                default:
+                                    return settings.text(.enrichFailedMessage)
+                                }
+                            }()
                             showEnrichError = true
                         }
                     }
@@ -291,7 +323,7 @@ struct CompanyDetailView: View {
                 TextField(settings.text(.foundedYear), text: binding(for: $draft.foundedYear))
                 TextField(settings.text(.headquarters), text: binding(for: $draft.headquarters))
                 TextField(settings.text(.serviceTypeLabel), text: $draft.serviceType)
-                TextField(settings.text(.location), text: $draft.location)
+                TextField(settings.text(.location), text: locationBinding)
                 TextField(settings.text(.marketRegionLabel), text: $draft.marketRegion)
                 Picker(settings.text(.targetAudience), selection: $draft.targetAudience) {
                     ForEach(TargetAudience.allCases) { option in
@@ -308,7 +340,7 @@ struct CompanyDetailView: View {
                         InfoRow(key: "foundedYear", label: settings.text(.foundedYear), value: draft.foundedYear),
                         InfoRow(key: "headquarters", label: settings.text(.headquarters), value: draft.headquarters),
                         InfoRow(key: nil, label: settings.text(.serviceTypeLabel), value: draft.serviceType),
-                        InfoRow(key: nil, label: settings.text(.location), value: draft.location),
+                        InfoRow(key: nil, label: settings.text(.location), value: displayLocation),
                         InfoRow(key: nil, label: settings.text(.marketRegionLabel), value: draft.marketRegion),
                         InfoRow(key: nil, label: settings.text(.targetAudience), value: draft.targetAudience.label(language: settings.language))
                     ],
@@ -496,7 +528,7 @@ struct CompanyDetailView: View {
                                 pendingUnlinkContactID = contact.id
                                 showUnlinkConfirm = true
                             } label: {
-                                Label(settings.text(.unlinkAction), systemImage: "link.badge.minus")
+                                Label(settings.text(.unlinkAction), systemImage: "link.badge.xmark")
                             }
                         }
                     }

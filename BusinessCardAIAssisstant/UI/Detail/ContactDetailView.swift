@@ -47,6 +47,31 @@ struct ContactDetailView: View {
         return draft.name
     }
 
+    private var displayLocation: String {
+        if showOriginalName, let original = draft.originalLocation, !original.isEmpty {
+            return original
+        }
+        return draft.location ?? ""
+    }
+
+    private var locationBinding: Binding<String> {
+        Binding(
+            get: {
+                if showOriginalName {
+                    return draft.originalLocation ?? ""
+                }
+                return draft.location ?? ""
+            },
+            set: { newValue in
+                if showOriginalName {
+                    draft.originalLocation = newValue
+                } else {
+                    draft.location = newValue
+                }
+            }
+        )
+    }
+
     private var isEnriching: Bool {
         appState.isEnrichingGlobal
     }
@@ -169,9 +194,16 @@ struct ContactDetailView: View {
                 appState.enrichContact(contactID: draft.id) { success, code in
                     DispatchQueue.main.async {
                         if !success {
-                            enrichErrorMessage = code == "no_changes"
-                            ? settings.text(.enrichNoChangesMessage)
-                            : settings.text(.enrichFailedMessage)
+                            enrichErrorMessage = {
+                                switch code {
+                                case "no_changes":
+                                    return settings.text(.enrichNoChangesMessage)
+                                case "missing_api_key":
+                                    return settings.text(.enrichMissingKeyMessage)
+                                default:
+                                    return settings.text(.enrichFailedMessage)
+                                }
+                            }()
                             showEnrichError = true
                         }
                     }
@@ -314,7 +346,7 @@ struct ContactDetailView: View {
             if editingSection == .details {
                 TextField(settings.text(.phone), text: $draft.phone)
                 TextField(settings.text(.email), text: $draft.email)
-                TextField(settings.text(.location), text: binding(for: $draft.location))
+                TextField(settings.text(.location), text: locationBinding)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     if let phoneURL = phoneURL(from: draft.phone) {
@@ -363,7 +395,7 @@ struct ContactDetailView: View {
                     }
                     InfoRowView(
                         label: settings.text(.location),
-                        value: draft.location,
+                        value: displayLocation,
                         isHighlighted: isFieldHighlighted("location"),
                         undoLabel: undoLabel(for: "location"),
                         originalValue: originalValue(for: "location"),
@@ -538,7 +570,7 @@ struct ContactDetailView: View {
                                 pendingUnlinkCompanyID = company.id
                                 showUnlinkConfirm = true
                             } label: {
-                                Label(settings.text(.unlinkAction), systemImage: "link.badge.minus")
+                                Label(settings.text(.unlinkAction), systemImage: "link.badge.xmark")
                             }
                         }
                     }

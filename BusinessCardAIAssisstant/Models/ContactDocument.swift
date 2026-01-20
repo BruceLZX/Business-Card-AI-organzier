@@ -9,6 +9,7 @@ struct ContactDocument: Identifiable, Hashable, Codable {
     var phone: String
     var email: String
     var location: String?
+    var originalLocation: String?
     var website: String?
     var linkedinURL: String?
     var notes: String
@@ -37,6 +38,7 @@ struct ContactDocument: Identifiable, Hashable, Codable {
         if (originalCompanyName ?? "").lowercased().contains(lowered) { return true }
         if (department ?? "").lowercased().contains(lowered) { return true }
         if (location ?? "").lowercased().contains(lowered) { return true }
+        if (originalLocation ?? "").lowercased().contains(lowered) { return true }
         if additionalCompanyNames.joined(separator: " ").lowercased().contains(lowered) { return true }
         if notes.lowercased().contains(lowered) { return true }
         if tags.joined(separator: " ").lowercased().contains(lowered) { return true }
