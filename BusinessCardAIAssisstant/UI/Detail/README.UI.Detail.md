@@ -1,5 +1,5 @@
-# Detail
+# Detail UI
 
 [中文说明 / Chinese](README.UI.Detail.zh.md)
 
-Company and contact detail pages, including editable fields, links between entities, and photo sections.
+Contact and company detail pages with modular sections, linking, photos, and AI enrichment UI.

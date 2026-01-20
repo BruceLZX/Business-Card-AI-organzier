@@ -1,5 +1,5 @@
-# Assets.xcassets
+# Assets
 
 [English / 英文](README.Assets.md)
 
-资源目录，用于应用图标、颜色与图片资源。
+Xcode 资源目录，包含图标与颜色资源。

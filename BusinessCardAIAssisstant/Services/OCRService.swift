@@ -22,7 +22,7 @@ final class OCRService {
         }
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["en_US", "zh-Hans"]
+        request.recognitionLanguages = ["en_US", "en_GB", "zh-Hans", "zh-Hant"]
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         DispatchQueue.global(qos: .userInitiated).async {

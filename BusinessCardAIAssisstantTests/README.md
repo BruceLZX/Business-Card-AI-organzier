@@ -1,4 +1,4 @@
-# BusinessCardAIAssisstantTests
+# Tests
 
 [中文说明 / Chinese](README.zh.md)
 

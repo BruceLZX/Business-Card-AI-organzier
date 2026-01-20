@@ -26,11 +26,11 @@ struct DirectoryView: View {
     }
 
     private var groupedCompanies: [(key: String, items: [CompanyDocument])] {
-        groupItems(filteredCompanies) { $0.name }
+        groupItems(filteredCompanies) { displayCompanyName(for: $0) }
     }
 
     private var groupedContacts: [(key: String, items: [ContactDocument])] {
-        groupItems(filteredContacts) { $0.name }
+        groupItems(filteredContacts) { displayContactName(for: $0) }
     }
 
     var body: some View {
@@ -59,7 +59,7 @@ struct DirectoryView: View {
                                                     CompanyDetailView(company: company)
                                                 } label: {
                                                     VStack(alignment: .leading, spacing: 8) {
-                                                        Text(company.name)
+                                                        Text(displayCompanyName(for: company))
                                                             .font(.headline)
                                                         Text(company.serviceType)
                                                             .font(.subheadline)
@@ -93,20 +93,20 @@ struct DirectoryView: View {
                                 } else {
                                     ForEach(groupedContacts, id: \.key) { group in
                                         Section {
-                                            ForEach(group.items) { contact in
-                                                NavigationLink {
-                                                    ContactDetailView(contact: contact)
-                                                } label: {
-                                                    VStack(alignment: .leading, spacing: 8) {
-                                                        Text(contact.name)
-                                                            .font(.headline)
-                                                        Text("\(contact.title) · \(contact.companyName)")
-                                                            .font(.subheadline)
+                                        ForEach(group.items) { contact in
+                                            NavigationLink {
+                                                ContactDetailView(contact: contact)
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 8) {
+                                                    Text(displayContactName(for: contact))
+                                                        .font(.headline)
+                                                    Text(contactSubtitle(for: contact))
+                                                        .font(.subheadline)
+                                                        .foregroundStyle(.secondary)
+                                                    if !contact.tags.isEmpty {
+                                                        Text(contact.tags.joined(separator: " · "))
+                                                            .font(.caption)
                                                             .foregroundStyle(.secondary)
-                                                        if !contact.tags.isEmpty {
-                                                            Text(contact.tags.joined(separator: " · "))
-                                                                .font(.caption)
-                                                                .foregroundStyle(.secondary)
                                                         }
                                                     }
                                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,9 +168,9 @@ struct DirectoryView: View {
     private func contactMatchesFilters(_ contact: ContactDocument) -> Bool {
         if !filters.location.isEmpty {
             let contactLocation = contact.location ?? ""
-            let companyLocation = company(for: contact)?.location ?? ""
+            let companyLocations = companies(for: contact).map(\.location).joined(separator: " ")
             let matches = contactLocation.lowercased().contains(filters.location.lowercased())
-                || companyLocation.lowercased().contains(filters.location.lowercased())
+                || companyLocations.lowercased().contains(filters.location.lowercased())
             if !matches { return false }
         }
 
@@ -180,21 +180,22 @@ struct DirectoryView: View {
         }
 
         if !filters.serviceType.isEmpty {
-            let companyService = company(for: contact)?.serviceType ?? ""
-            if !companyService.lowercased().contains(filters.serviceType.lowercased()) {
+            let companyServices = companies(for: contact).map(\.serviceType).joined(separator: " ")
+            if !companyServices.lowercased().contains(filters.serviceType.lowercased()) {
                 return false
             }
         }
 
         if let audience = filters.targetAudience.asAudience {
-            if company(for: contact)?.targetAudience != audience {
+            let matches = companies(for: contact).contains { $0.targetAudience == audience }
+            if !matches {
                 return false
             }
         }
 
         if !filters.marketRegion.isEmpty {
-            let companyRegion = company(for: contact)?.marketRegion ?? ""
-            if !companyRegion.lowercased().contains(filters.marketRegion.lowercased()) {
+            let companyRegions = companies(for: contact).map(\.marketRegion).joined(separator: " ")
+            if !companyRegions.lowercased().contains(filters.marketRegion.lowercased()) {
                 return false
             }
         }
@@ -202,9 +203,31 @@ struct DirectoryView: View {
         return true
     }
 
-    private func company(for contact: ContactDocument) -> CompanyDocument? {
-        guard let companyID = contact.companyID else { return nil }
-        return appState.company(for: companyID)
+    private func companies(for contact: ContactDocument) -> [CompanyDocument] {
+        var ids: [UUID] = []
+        if let primary = contact.companyID {
+            ids.append(primary)
+        }
+        ids.append(contentsOf: contact.additionalCompanyIDs.filter { $0 != contact.companyID })
+        return ids.compactMap { appState.company(for: $0) }
+    }
+
+    private func contactSubtitle(for contact: ContactDocument) -> String {
+        let companies = companies(for: contact)
+        let primaryName = contact.companyName.isEmpty
+        ? displayCompanyName(for: companies.first)
+        : localizedText(primary: contact.companyName, fallback: contact.originalCompanyName)
+        if companies.count > 1 {
+            let extraCount = max(0, companies.count - 1)
+            let companyLabel = settings.text(.companies).lowercased()
+            let companyText = primaryName.isEmpty ? "\(extraCount + 1) \(companyLabel)" : "\(primaryName) +\(extraCount)"
+            return contact.title.isEmpty ? companyText : "\(contact.title) · \(companyText)"
+        }
+        let companyText = primaryName
+        if companyText.isEmpty {
+            return contact.title
+        }
+        return contact.title.isEmpty ? companyText : "\(contact.title) · \(companyText)"
     }
 
     private func initialLetter(from text: String) -> String {
@@ -221,6 +244,26 @@ struct DirectoryView: View {
             return String(first)
         }
         return "#"
+    }
+
+    private func displayCompanyName(for company: CompanyDocument?) -> String {
+        guard let company else { return "" }
+        return localizedText(primary: company.name, fallback: company.originalName)
+    }
+
+    private func displayContactName(for contact: ContactDocument) -> String {
+        return localizedText(primary: contact.name, fallback: contact.originalName)
+    }
+
+    private func localizedText(primary: String, fallback: String?) -> String {
+        let preferred: String
+        switch settings.language {
+        case .chinese:
+            preferred = fallback ?? primary
+        case .english:
+            preferred = primary.isEmpty ? (fallback ?? "") : primary
+        }
+        return preferred.isEmpty ? (fallback ?? primary) : preferred
     }
 
     private func sectionID(for key: String, page: PageType) -> String {

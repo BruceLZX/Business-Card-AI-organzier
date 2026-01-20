@@ -1,5 +1,5 @@
-# Detail
+# Detail UI
 
 [English / 英文](README.UI.Detail.md)
 
-公司与联系人详情页模块，包含可编辑字段、双向跳转与图片区域。
+联系人与公司详情页，包含模块化编辑、关联、图片与 AI 补全展示。

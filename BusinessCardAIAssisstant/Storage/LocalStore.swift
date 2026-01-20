@@ -93,6 +93,22 @@ final class LocalStore {
         return UIImage(contentsOfFile: url.path)
     }
 
+    func deleteCompanyPhoto(companyID: UUID, photoID: UUID) {
+        let url = companiesURL
+            .appendingPathComponent(companyID.uuidString, isDirectory: true)
+            .appendingPathComponent("photos", isDirectory: true)
+            .appendingPathComponent("\(photoID.uuidString).jpg")
+        deleteItemIfExists(at: url)
+    }
+
+    func deleteContactPhoto(contactID: UUID, photoID: UUID) {
+        let url = contactsURL
+            .appendingPathComponent(contactID.uuidString, isDirectory: true)
+            .appendingPathComponent("photos", isDirectory: true)
+            .appendingPathComponent("\(photoID.uuidString).jpg")
+        deleteItemIfExists(at: url)
+    }
+
     private func loadDocuments<T: Decodable>(from root: URL, fileName: String) -> [T] {
         guard let directoryContents = try? fileManager.contentsOfDirectory(
             at: root,

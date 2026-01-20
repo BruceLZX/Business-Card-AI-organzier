@@ -2,4 +2,10 @@
 
 [中文说明 / Chinese](README.Services.zh.md)
 
-App services such as capture integration, OCR extraction (Vision), GPT classification, search utilities, and the enrichment client.
+Domain services for capture, OCR parsing, AI enrichment, and search.
+
+Key services:
+- `CaptureService`
+- `OCRService` and `OCRExtractionService`
+- `EnrichmentService` (web search + summaries + tags)
+- `SearchService`

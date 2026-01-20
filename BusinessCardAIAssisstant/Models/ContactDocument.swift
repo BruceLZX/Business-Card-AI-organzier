@@ -16,6 +16,13 @@ struct ContactDocument: Identifiable, Hashable, Codable {
     var companyID: UUID?
     var companyName: String
     var originalCompanyName: String?
+    var additionalCompanyIDs: [UUID] = []
+    var additionalCompanyNames: [String] = []
+    var aiSummaryEN: String = ""
+    var aiSummaryZH: String = ""
+    var aiSummaryUpdatedAt: Date?
+    var lastEnrichedFields: [String] = []
+    var lastEnrichedValues: [String: String] = [:]
     var photoIDs: [UUID]
     var sourceLanguageCode: String?
     var enrichedAt: Date?
@@ -30,6 +37,7 @@ struct ContactDocument: Identifiable, Hashable, Codable {
         if (originalCompanyName ?? "").lowercased().contains(lowered) { return true }
         if (department ?? "").lowercased().contains(lowered) { return true }
         if (location ?? "").lowercased().contains(lowered) { return true }
+        if additionalCompanyNames.joined(separator: " ").lowercased().contains(lowered) { return true }
         if notes.lowercased().contains(lowered) { return true }
         if tags.joined(separator: " ").lowercased().contains(lowered) { return true }
         return false

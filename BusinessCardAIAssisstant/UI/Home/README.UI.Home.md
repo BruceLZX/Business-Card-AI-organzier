@@ -1,5 +1,5 @@
-# Home
+# Home UI
 
 [中文说明 / Chinese](README.UI.Home.zh.md)
 
-Capture-focused home page with a large add button and recent capture gallery.
+Home screen: capture entry and recent documents.

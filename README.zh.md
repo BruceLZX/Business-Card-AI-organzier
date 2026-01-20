@@ -1,118 +1,59 @@
-# Business Card AI Assistant
+# BusinessCardAIAssisstant
 
 [English / 英文](README.md)
 
-一个用于 iPhone 的名片与公司资料采集应用。用户通过拍照名片或公司小册子，自动提取结构化信息并生成“公司文档”和“联系人文档”，支持搜索与双向跳转，并允许手动修改与补充。
+一个用于 iPhone 的名片与公司资料采集应用。通过拍照生成结构化“联系人/公司档案”，支持搜索、标签与双向关联，并可使用 AI 联网补全信息。
 
-## 项目介绍
-该应用帮助用户从线下名片和公司资料中快速建立可检索的个人与公司档案，形成完整的关系网络与信息库，适合商务拓展、销售、采购、合作伙伴管理等场景。
+## 产品需求文档
+- 详细用例见 `Product Requirement.md`（中文）。
 
-## 产品需求（PRD）
-### 目标用户
-- 商务拓展、销售、市场、公关、采购等经常收集名片与公司资料的人群
+## 核心功能
+- 拍照或从图库添加图片（单个档案最多 10 张）。
+- 联系人与公司详情页的模块化编辑与跳转关联。
+- 目录页的字母索引与多条件筛选（联系人/公司均支持）。
+- Tag pool 可搜索选择，AI 补全标签。
+- AI 补全带分阶段进度、字段级对比与撤销。
 
-### 核心价值
-- 将纸质名片/资料转为结构化数据
-- 通过关键词快速定位人物/公司/业务
-- 公司与联系人双向关联，形成清晰的关系链
+## AI 补全概览
+- 先用 mini 模型解析照片，再用 thinking 模型多阶段联网搜索。
+- 补全过程显示全局进度，期间禁止所有交互。
+- 更新字段高亮显示，并展示原有内容，可一键撤销。
+- 不确定信息用黄色“可能不准确”标记。
 
-### 核心功能
-- 拍照采集：支持名片与公司小册子拍摄
-- OCR 识别：优先使用 Apple Vision 本地 OCR
-- 文档创建：将 OCR 文本生成公司/联系人文档
-- GPT 分类：判断是联系人还是公司信息
-- 创建前核对：保存前确认类型与字段
-- 文档生成：
-  - 公司文档：公司信息、业务内容、相关联系人列表、联系人跳转链接、原始照片展示
-  - 联系人文档：个人信息、职位、联系方式、所属公司跳转链接、原始照片展示
-- 搜索与过滤：按人名、公司名、业务关键词快速检索
-- 手动编辑：支持用户对识别结果进行修正与补充
-- 重复检测：识别现有联系人并提示更新
-- 手动补全：用户触发联网搜索完善资料
-- 最近创建：拍照页展示最近创建的公司/联系人
+## 技术栈
+- SwiftUI + 本地存储。
+- OpenAI Responses API（密钥配置在 `Secrets.xcconfig`）。
 
-### 页面需求
-- 拍照
-  - 大按钮拍摄与最近创建展示
-- 名录
-  - 支持公司/个人切换与搜索
-  - 过滤项：公司位置、服务种类、服务对象（to B/to C）、市场区域等
-- 设置
-  - 主题模式（跟随系统/浅色/深色）、语言与默认偏好
-- 公司详情页
-  - 顶部信息区：公司信息、业务内容、关键词
-  - 关联联系人区：可点击跳转
-  - 图片区：展示用户拍摄的照片
-  - 编辑入口
-- 联系人详情页
-  - 顶部信息区：姓名、职位、联系方式、备注
-  - 所属公司跳转按钮
-  - 图片区：展示用户拍摄的照片
-  - 编辑入口
-
-### 数据结构（建议）
-- CompanyDocument
-  - 公司名称、简介、业务关键词、官网/地址/电话
-  - 关联联系人列表（ContactDocument ID 列表）
-  - 原始图片列表
-- ContactDocument
-  - 姓名、职位、联系方式、邮箱、备注
-  - 关联公司（CompanyDocument ID）
-  - 原始图片列表
-
-### 非功能性需求
-- 数据隐私：本地优先存储，云同步为可选功能
-- 识别可追溯：保留原图，默认不保存 OCR 原文
-- 可扩展性：后续可替换或增加识别服务（当前使用 Vision OCR）
-
-### 账号与同步（未来）
-- 当前版本仅本地存储
-- 未来支持通过 Google 或手机号创建账号
-
-## 项目结构（建议）
-- BusinessCardAIAssisstant/
-  - App/：应用入口、导航与路由
-  - UI/：页面与通用组件
-  - Models/：CompanyDocument、ContactDocument 等数据模型
-  - Services/
-    - CaptureService：拍照与图片管理
-    - OCRService：本地 Vision OCR
-    - EnrichmentService：在线补全接口占位（本地配置 API）
-    - SearchService：索引与搜索
-  - Storage/
-    - LocalStore：本地数据库与图片存储
-  - Resources/：图片、字体、配置文件
-  - Tests/：单元与 UI 测试
-
-## 进度表（示例）
-| 阶段 | 时间 | 交付物 |
-| --- | --- | --- |
-| 需求确认 | 第 1 周 | PRD、信息架构、原型草图 |
-| 数据模型与存储 | 第 2 周 | Company/Contact 数据模型、本地存储方案 |
-| 识别流程 | 第 3 周 | 拍照流程、AI 识别接入（接口待定） |
-| 搜索与关联 | 第 4 周 | 搜索、公司/联系人双向跳转 |
-| UI 完善 | 第 5 周 | 详情页与编辑流程、图片展示 |
-| 测试与迭代 | 第 6 周 | 核心流程测试、Bug 修复 |
-
-## 项目现状
-- 已完成：OCR 拍照、创建前核对、文档创建与手动补全流程
-- 进行中：补全字段映射与 UI 优化
-
-## 后续计划
-- 完善补全字段映射（官网/电话/地址）
-- 在线补全客户端接入（API 本地配置，不入库）
-- 搜索索引策略（中文分词/关键词提取）
-- iCloud 或本地导出备份
+## 项目结构
+- `BusinessCardAIAssisstant/` 应用源码
+- `BusinessCardAIAssisstant/Services/` 拍照、OCR、补全、搜索
+- `BusinessCardAIAssisstant/Storage/` 本地存储与图片管理
+- `BusinessCardAIAssisstant/UI/` 页面与组件
+- `BusinessCardAIAssisstant/Models/` 数据模型
+- `BusinessCardAIAssisstant/App/` 应用入口与全局状态
 
 ## 本地配置
-- 在 `BusinessCardAIAssisstant/Secrets.xcconfig` 填入 `OPENAI_API_KEY = ...`
-- 在线补全使用 `gpt-4o-mini` 模型，优先成本
-- 不要提交密钥，`.gitignore` 已排除这些文件
-- 真机运行需要相机权限（Xcode 项目已配置 NSCameraUsageDescription）
+1. 创建 `BusinessCardAIAssisstant/Secrets.xcconfig`：
+   ```
+   OPENAI_API_KEY = your_key_here
+   ```
+2. 打开 `BusinessCardAIAssisstant.xcodeproj` 运行。
 
-## 资源
-- App icon 源文件：`BusinessCardAI.png`（已复制到 `BusinessCardAIAssisstant/Assets.xcassets/AppIcon.appiconset`）
+## AI 配置（本地、Git 忽略）
+- 模型选择与 prompt 集中在 `BusinessCardAIAssisstant/App/AIConfig.swift`。
+- 该文件已被 `.gitignore` 排除，不会提交到仓库。
+- 每段 prompt 都有注释说明用途与调用位置。
 
-## 更新日志
-- 2026-01-11：新增设置页（主题模式/语言/偏好）、名录搜索、OCR 服务、GPT 分类与手动补全客户端（mini 模型）
-- 2026-01-11：移除示例数据，新增创建前核对、最近创建列表、更新 app icon
+## 当前进度
+- 已完成：档案与目录基础流程、AI 补全流程与对比撤销。
+- 进行中：按 `Product Requirement.md` 继续验证与优化细节。
+
+## 下一步目标
+- 开通收费功能（订阅或一次性解锁）。
+- 文档可通过分享按钮分享给其他已安装该 App 的用户。
+- 每个文档支持生成 PDF 报告，可分享或保存。
+- 根据用户地区选择 AI 服务（如中国区使用其他 API）。
+
+## 备注
+- App icon 源文件：`BusinessCardAI.png`。
+- 密钥不提交，`.gitignore` 已排除相关文件。

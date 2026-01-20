@@ -1,5 +1,5 @@
-# Home
+# Home UI
 
 [English / 英文](README.UI.Home.md)
 
-拍照主页模块，包含大按钮与最近拍摄展示。
+首页：拍照入口与最近创建。

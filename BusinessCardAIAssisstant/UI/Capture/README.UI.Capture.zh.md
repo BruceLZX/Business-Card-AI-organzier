@@ -1,5 +1,9 @@
-# Capture
+# Capture UI
 
 [English / 英文](README.UI.Capture.md)
 
-拍照与图片选择桥接模块，用于采集名片和资料图片。
+相机、相册选择与创建流程。
+
+主要文件：
+- `CameraView`, `ImagePicker`
+- `CreateDocumentView`

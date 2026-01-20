@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 struct EnrichmentRequest {
     enum TargetType {
@@ -11,11 +12,15 @@ struct EnrichmentRequest {
     let summary: String
     let notes: String
     let tags: [String]
+    let tagPool: [String]
     let rawOCRText: String
+    let preferredLinks: [String?]
+    let context: String
 }
 
 struct EnrichmentResult {
-    let summary: String
+    let summaryEN: String
+    let summaryZH: String
     let tags: [String]
     let suggestedLinks: [String]
     let website: String?
@@ -33,6 +38,206 @@ struct EnrichmentResult {
     let email: String?
 }
 
+struct OCRParsedResult {
+    enum ParsedType: String {
+        case company
+        case contact
+        case both
+    }
+
+    let type: ParsedType
+    let contact: OCRContact?
+    let company: OCRCompany?
+    let error: OCRError?
+}
+
+struct OCRError {
+    let code: String
+    let message: String
+}
+
+struct OCRContact {
+    let nameEN: String
+    let nameZH: String
+    let title: String
+    let department: String?
+    let phone: String
+    let email: String
+    let location: String?
+    let website: String?
+    let linkedin: String?
+    let companyNameEN: String
+    let companyNameZH: String
+    let notes: String?
+    let tags: [String]
+}
+
+struct OCRCompany {
+    let nameEN: String
+    let nameZH: String
+    let summary: String
+    let industry: String?
+    let serviceType: String?
+    let location: String?
+    let marketRegion: String?
+    let website: String?
+    let phone: String?
+    let address: String?
+    let notes: String?
+    let tags: [String]
+}
+
+final class OCRExtractionService {
+    private let client = OpenAIClient()
+
+    func parse(text: String, completion: @escaping (OCRParsedResult?) -> Void) {
+        guard let apiKey = client.apiKey, !apiKey.isEmpty else {
+            completion(nil)
+            return
+        }
+        let prompt = AIConfig.ocrTextPrompt(ocrText: text)
+        client.send(prompt: prompt, model: AIConfig.ocrTextModel, apiKey: apiKey, tools: []) { result in
+            switch result {
+            case .success(let responseText):
+                completion(Self.parseResult(from: responseText))
+            case .failure:
+                completion(nil)
+            }
+        }
+    }
+
+    func parse(image: UIImage, completion: @escaping (OCRParsedResult?) -> Void) {
+        parse(images: [image], completion: completion)
+    }
+
+    func parse(images: [UIImage], completion: @escaping (OCRParsedResult?) -> Void) {
+        guard let apiKey = client.apiKey, !apiKey.isEmpty else {
+            completion(nil)
+            return
+        }
+        let base64Images = images.compactMap { $0.jpegData(compressionQuality: 0.8)?.base64EncodedString() }
+        guard !base64Images.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        let prompt = AIConfig.ocrImagePrompt()
+        client.sendVision(prompt: prompt, model: AIConfig.ocrVisionModel, imageBase64s: base64Images, apiKey: apiKey, tools: []) { result in
+            switch result {
+            case .success(let responseText):
+                completion(Self.parseResult(from: responseText))
+            case .failure:
+                completion(nil)
+            }
+        }
+    }
+
+    private static func parseResult(from text: String) -> OCRParsedResult? {
+        guard let json = EnrichmentService.extractJSON(from: text) else { return nil }
+        guard let data = json.data(using: .utf8) else { return nil }
+        guard let payload = try? JSONDecoder().decode(OCRPayload.self, from: data) else { return nil }
+        if let error = payload.error, let code = error.code, !code.isEmpty {
+            return OCRParsedResult(type: .company, contact: nil, company: nil, error: error.asModel())
+        }
+        guard let type = OCRParsedResult.ParsedType(rawValue: payload.type.lowercased()) else {
+            return nil
+        }
+        return OCRParsedResult(
+            type: type,
+            contact: payload.contact?.asModel(),
+            company: payload.company?.asModel(),
+            error: nil
+        )
+    }
+}
+
+private struct OCRPayload: Decodable {
+    struct OCRContactPayload: Decodable {
+        let name_en: String?
+        let name_zh: String?
+        let title: String?
+        let department: String?
+        let phone: String?
+        let email: String?
+        let location: String?
+        let website: String?
+        let linkedin: String?
+        let company_name_en: String?
+        let company_name_zh: String?
+        let notes: String?
+        let tags: [String]?
+
+        func asModel() -> OCRContact {
+            let filteredTags = (tags ?? []).filter { !$0.contains(" ") && !$0.contains("\t") }
+            return OCRContact(
+                nameEN: name_en ?? "",
+                nameZH: name_zh ?? "",
+                title: title ?? "",
+                department: department?.isEmpty == false ? department : nil,
+                phone: phone ?? "",
+                email: email ?? "",
+                location: location?.isEmpty == false ? location : nil,
+                website: website?.isEmpty == false ? website : nil,
+                linkedin: linkedin?.isEmpty == false ? linkedin : nil,
+                companyNameEN: company_name_en ?? "",
+                companyNameZH: company_name_zh ?? "",
+                notes: notes?.isEmpty == false ? notes : nil,
+                tags: filteredTags
+            )
+        }
+    }
+
+    struct OCRCompanyPayload: Decodable {
+        let name_en: String?
+        let name_zh: String?
+        let summary: String?
+        let industry: String?
+        let service_type: String?
+        let location: String?
+        let market_region: String?
+        let website: String?
+        let phone: String?
+        let address: String?
+        let notes: String?
+        let tags: [String]?
+
+        func asModel() -> OCRCompany {
+            let filteredTags = (tags ?? []).filter { !$0.contains(" ") && !$0.contains("\t") }
+            return OCRCompany(
+                nameEN: name_en ?? "",
+                nameZH: name_zh ?? "",
+                summary: summary ?? "",
+                industry: industry?.isEmpty == false ? industry : nil,
+                serviceType: service_type?.isEmpty == false ? service_type : nil,
+                location: location?.isEmpty == false ? location : nil,
+                marketRegion: market_region?.isEmpty == false ? market_region : nil,
+                website: website?.isEmpty == false ? website : nil,
+                phone: phone?.isEmpty == false ? phone : nil,
+                address: address?.isEmpty == false ? address : nil,
+                notes: notes?.isEmpty == false ? notes : nil,
+                tags: filteredTags
+            )
+        }
+    }
+
+    struct OCRErrorPayload: Decodable {
+        let code: String?
+        let message: String?
+
+        func asModel() -> OCRError {
+            OCRError(
+                code: code ?? "",
+                message: message ?? ""
+            )
+        }
+    }
+
+    let type: String
+    let contact: OCRContactPayload?
+    let company: OCRCompanyPayload?
+    let error: OCRErrorPayload?
+}
+
 protocol EnrichmentProviding {
     func buildPrompt(for request: EnrichmentRequest) -> String
     func enrich(_ request: EnrichmentRequest, completion: @escaping (EnrichmentResult?) -> Void)
@@ -40,31 +245,25 @@ protocol EnrichmentProviding {
 
 final class EnrichmentService: EnrichmentProviding {
     private let client = OpenAIClient()
+    private let thinkingModel = "o3-mini"
 
     func buildPrompt(for request: EnrichmentRequest) -> String {
         let typeLabel = request.type == .company ? "company" : "contact"
-        return """
-        You are a research assistant. Use web search to enrich the following \(typeLabel) profile.
-        Return a single JSON object only. No markdown, no commentary.
-
-        If type is company, include keys:
-        summary, tags, links, website, linkedin, phone, address, industry, company_size, revenue, founded_year, headquarters.
-
-        If type is contact, include keys:
-        summary, tags, links, website, linkedin, phone, email, title, department, location.
-
-        - summary: concise, factual, <= 60 words.
-        - tags: 3-6 short tags.
-        - links: official or authoritative URLs only.
-        - leave unknown fields as empty string or empty array.
-        - do not invent facts; prefer official sources.
-
-        Name: \(request.name)
-        Summary: \(request.summary)
-        Notes: \(request.notes)
-        Tags: \(request.tags.joined(separator: ", "))
-        OCR Text: \(request.rawOCRText)
-        """
+        let preferredLinks = request.preferredLinks
+            .compactMap { $0 }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: ", ")
+        return AIConfig.enrichmentPrompt(
+            typeLabel: typeLabel,
+            name: request.name,
+            summary: request.summary,
+            notes: request.notes,
+            tags: request.tags,
+            tagPool: request.tagPool,
+            rawOCRText: request.rawOCRText,
+            preferredLinks: preferredLinks,
+            context: request.context
+        )
     }
 
     func enrich(_ request: EnrichmentRequest, completion: @escaping (EnrichmentResult?) -> Void) {
@@ -74,7 +273,7 @@ final class EnrichmentService: EnrichmentProviding {
         }
 
         let prompt = buildPrompt(for: request)
-        client.send(prompt: prompt, apiKey: apiKey, tools: [["type": "web_search"]]) { result in
+        client.send(prompt: prompt, model: AIConfig.enrichmentModel, apiKey: apiKey, tools: [["type": "web_search"]]) { result in
             switch result {
             case .success(let text):
                 completion(Self.parseResult(from: text))
@@ -89,7 +288,8 @@ final class EnrichmentService: EnrichmentProviding {
         guard let data = json.data(using: .utf8) else { return nil }
         guard let payload = try? JSONDecoder().decode(EnrichmentPayload.self, from: data) else { return nil }
         return EnrichmentResult(
-            summary: payload.summary ?? "",
+            summaryEN: payload.summary_en ?? "",
+            summaryZH: payload.summary_zh ?? "",
             tags: payload.tags ?? [],
             suggestedLinks: payload.links ?? [],
             website: payload.website,
@@ -117,7 +317,8 @@ final class EnrichmentService: EnrichmentProviding {
 }
 
 private struct EnrichmentPayload: Decodable {
-    let summary: String?
+    let summary_en: String?
+    let summary_zh: String?
     let tags: [String]?
     let links: [String]?
     let website: String?
@@ -137,13 +338,16 @@ private struct EnrichmentPayload: Decodable {
 
 private final class OpenAIClient {
     var apiKey: String? {
+        if let override = AIConfig.apiKey, !override.isEmpty {
+            return override
+        }
         if let env = ProcessInfo.processInfo.environment["OPENAI_API_KEY"], !env.isEmpty {
             return env
         }
         return SecretsLoader.apiKeyFromBundle()
     }
 
-    func send(prompt: String, apiKey: String, tools: [[String: String]], completion: @escaping (Result<String, Error>) -> Void) {
+    func send(prompt: String, model: String, apiKey: String, tools: [[String: String]], completion: @escaping (Result<String, Error>) -> Void) {
         guard let url = URL(string: "https://api.openai.com/v1/responses") else {
             completion(.failure(OpenAIClientError.invalidURL))
             return
@@ -155,8 +359,74 @@ private final class OpenAIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let payload: [String: Any] = [
-            "model": "gpt-4o-mini",
+            "model": model,
             "input": prompt,
+            "tools": tools
+        ]
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+        } catch {
+            completion(.failure(error))
+            return
+        }
+
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            if let error {
+                completion(.failure(error))
+                return
+            }
+            guard let data else {
+                completion(.failure(OpenAIClientError.emptyResponse))
+                return
+            }
+            do {
+                let response = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+                if let text = response.output_text ?? response.outputText() {
+                    completion(.success(text))
+                } else {
+                    completion(.failure(OpenAIClientError.emptyResponse))
+                }
+            } catch {
+                completion(.failure(error))
+            }
+        }.resume()
+    }
+
+    func sendVision(prompt: String, model: String, imageBase64s: [String], apiKey: String, tools: [[String: String]], completion: @escaping (Result<String, Error>) -> Void) {
+        guard let url = URL(string: "https://api.openai.com/v1/responses") else {
+            completion(.failure(OpenAIClientError.invalidURL))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var content: [[String: Any]] = [
+            [
+                "type": "input_text",
+                "text": prompt
+            ]
+        ]
+        for base64 in imageBase64s {
+            content.append([
+                "type": "input_image",
+                "image_url": "data:image/jpeg;base64,\(base64)"
+            ])
+        }
+
+        let input: [[String: Any]] = [
+            [
+                "role": "user",
+                "content": content
+            ]
+        ]
+
+        let payload: [String: Any] = [
+            "model": model,
+            "input": input,
             "tools": tools
         ]
 
@@ -223,7 +493,7 @@ private enum SecretsLoader {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "xcconfig") else {
             return nil
         }
-        guard let content = try? String(contentsOf: url) else { return nil }
+        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         for line in content.split(separator: "\n") {
             let parts = line.split(separator: "=", maxSplits: 1)
             guard parts.count == 2 else { continue }
@@ -250,16 +520,8 @@ final class DocumentClassifier {
             completion(.company)
             return
         }
-
-        let prompt = """
-        Decide whether the OCR text describes a person/contact or a company/brochure.
-        Return a single JSON object only with key \"type\" and value \"contact\" or \"company\".
-        No markdown, no extra text.
-        OCR Text:
-        \(text)
-        """
-
-        client.send(prompt: prompt, apiKey: apiKey, tools: []) { result in
+        let prompt = AIConfig.classifierPrompt(ocrText: text)
+        client.send(prompt: prompt, model: AIConfig.classifierModel, apiKey: apiKey, tools: []) { result in
             switch result {
             case .success(let responseText):
                 if let json = EnrichmentService.extractJSON(from: responseText),

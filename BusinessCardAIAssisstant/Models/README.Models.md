@@ -2,4 +2,10 @@
 
 [中文说明 / Chinese](README.Models.zh.md)
 
-Domain models such as company/contact documents and filtering enums.
+Data models for contacts, companies, filters, and recents.
+
+Main models:
+- `ContactDocument`
+- `CompanyDocument`
+- `FilterOptions`, `TargetAudience`
+- `RecentDocument`

@@ -1,5 +1,19 @@
 import Foundation
 import UIKit
+import SwiftUI
+
+enum EnrichmentStage: Equatable {
+    case analyzing
+    case searching(current: Int, total: Int)
+    case merging
+    case complete
+}
+
+struct EnrichmentProgressState: Equatable {
+    let stage: EnrichmentStage
+    let progress: Double
+    let totalStages: Int
+}
 
 @MainActor
 final class AppState: ObservableObject {
@@ -7,6 +21,13 @@ final class AppState: ObservableObject {
     @Published var contacts: [ContactDocument]
     @Published var recentCaptures: [UIImage] = []
     @Published var tagPool: [String] = []
+    @Published var enrichmentProgress: EnrichmentProgressState?
+
+    private var progressTask: Task<Void, Never>?
+
+    var isEnrichingGlobal: Bool {
+        enrichmentProgress != nil
+    }
 
     var recentDocuments: [RecentDocument] {
         let companyItems = companies.map { company in
@@ -20,7 +41,8 @@ final class AppState: ObservableObject {
         }
 
         let contactItems = contacts.map { contact in
-            let subtitle = contact.companyName.isEmpty ? contact.title : "\(contact.title) · \(contact.companyName)"
+            let primaryName = contact.companyName.isEmpty ? contact.additionalCompanyNames.first ?? "" : contact.companyName
+            let subtitle = primaryName.isEmpty ? contact.title : "\(contact.title) · \(primaryName)"
             return RecentDocument(
                 id: contact.id,
                 kind: .contact,
@@ -44,7 +66,8 @@ final class AppState: ObservableObject {
         let loadedCompanies = store.loadCompanies()
         let loadedContacts = store.loadContacts()
 
-        let (cleanCompanies, cleanContacts) = purgeSampleData(
+        let (cleanCompanies, cleanContacts) = Self.purgeSampleData(
+            store: store,
             companies: loadedCompanies,
             contacts: loadedContacts
         )
@@ -87,12 +110,81 @@ final class AppState: ObservableObject {
         registerTags(contact.tags)
     }
 
+    func deleteCompany(_ companyID: UUID) {
+        let removedCompanyName = companies.first(where: { $0.id == companyID })?.name
+        companies.removeAll { $0.id == companyID }
+        store.deleteCompany(companyID)
+
+        var updatedContacts: [ContactDocument] = []
+        for contact in contacts {
+            let needsUpdate = contact.companyID == companyID || contact.additionalCompanyIDs.contains(companyID)
+            guard needsUpdate else { continue }
+            var updated = contact
+            if updated.companyID == companyID {
+                if let replacementID = updated.additionalCompanyIDs.first {
+                    updated.companyID = replacementID
+                    updated.additionalCompanyIDs.removeAll { $0 == replacementID }
+                    if let replacementName = updated.additionalCompanyNames.first {
+                        updated.companyName = replacementName
+                        updated.additionalCompanyNames.removeAll { $0 == replacementName }
+                    } else if let company = company(for: replacementID) {
+                        updated.companyName = company.name
+                    } else {
+                        updated.companyName = ""
+                    }
+                    if let company = company(for: updated.companyID ?? replacementID) {
+                        updated.originalCompanyName = company.originalName
+                    } else {
+                        updated.originalCompanyName = nil
+                    }
+                } else {
+                    updated.companyID = nil
+                    updated.companyName = ""
+                    updated.originalCompanyName = nil
+                }
+            }
+            updated.additionalCompanyIDs.removeAll { $0 == companyID }
+            if let removedCompanyName {
+                updated.additionalCompanyNames.removeAll { $0 == removedCompanyName }
+            }
+            updatedContacts.append(updated)
+            store.saveContact(updated)
+        }
+        if !updatedContacts.isEmpty {
+            for updated in updatedContacts {
+                if let index = contacts.firstIndex(where: { $0.id == updated.id }) {
+                    contacts[index] = updated
+                }
+            }
+        }
+
+        refreshTagPool()
+    }
+
+    func deleteContact(_ contactID: UUID) {
+        contacts.removeAll { $0.id == contactID }
+        store.deleteContact(contactID)
+
+        for index in companies.indices {
+            if companies[index].relatedContactIDs.contains(contactID) {
+                companies[index].relatedContactIDs.removeAll { $0 == contactID }
+                store.saveCompany(companies[index])
+            }
+        }
+
+        refreshTagPool()
+    }
+
     func registerTags(_ tags: [String]) {
         let normalized = tags
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         let merged = Array(Set(tagPool + normalized)).sorted()
         tagPool = merged
+    }
+
+    private func refreshTagPool() {
+        tagPool = Array(Set(companies.flatMap(\.tags) + contacts.flatMap(\.tags))).sorted()
     }
 
     func findDuplicateContact(name: String, phone: String, email: String) -> ContactDocument? {
@@ -158,9 +250,63 @@ final class AppState: ObservableObject {
             companies[index].relatedContactIDs.insert(contactID, at: 0)
             store.saveCompany(companies[index])
         }
+        guard let contactIndex = contacts.firstIndex(where: { $0.id == contactID }) else { return }
+        let companyNameValue = companies[index].name
+        var updated = contacts[contactIndex]
+        if updated.companyID == nil {
+            updated.companyID = companyID
+            updated.companyName = companyNameValue
+            updated.originalCompanyName = companies[index].originalName
+        } else if updated.companyID != companyID,
+                  !updated.additionalCompanyIDs.contains(companyID) {
+            updated.additionalCompanyIDs.append(companyID)
+            updated.additionalCompanyNames.append(companyNameValue)
+        }
+        contacts[contactIndex] = updated
+        store.saveContact(updated)
     }
 
-    func mergeContact(existingID: UUID, newContact: ContactDocument, image: UIImage?) {
+    func unlinkContact(_ contactID: UUID, from companyID: UUID) {
+        if let companyIndex = companies.firstIndex(where: { $0.id == companyID }) {
+            companies[companyIndex].relatedContactIDs.removeAll { $0 == contactID }
+            store.saveCompany(companies[companyIndex])
+        }
+
+        guard let contactIndex = contacts.firstIndex(where: { $0.id == contactID }) else { return }
+        var updated = contacts[contactIndex]
+        if updated.companyID == companyID {
+            if let replacementID = updated.additionalCompanyIDs.first {
+                updated.companyID = replacementID
+                updated.additionalCompanyIDs.removeAll { $0 == replacementID }
+                if let replacementName = updated.additionalCompanyNames.first {
+                    updated.companyName = replacementName
+                    updated.additionalCompanyNames.removeAll { $0 == replacementName }
+                } else if let company = company(for: replacementID) {
+                    updated.companyName = company.name
+                } else {
+                    updated.companyName = ""
+                }
+                if let company = company(for: updated.companyID ?? replacementID) {
+                    updated.originalCompanyName = company.originalName
+                } else {
+                    updated.originalCompanyName = nil
+                }
+            } else {
+                updated.companyID = nil
+                updated.companyName = ""
+                updated.originalCompanyName = nil
+            }
+        } else {
+            updated.additionalCompanyIDs.removeAll { $0 == companyID }
+            if let name = companyName(for: companyID) {
+                updated.additionalCompanyNames.removeAll { $0 == name }
+            }
+        }
+        contacts[contactIndex] = updated
+        store.saveContact(updated)
+    }
+
+    func mergeContact(existingID: UUID, newContact: ContactDocument, images: [UIImage]) {
         guard let index = contacts.firstIndex(where: { $0.id == existingID }) else { return }
         var updated = contacts[index]
 
@@ -189,8 +335,6 @@ final class AppState: ObservableObject {
         }
 
         if let company = ensureCompany(named: newContact.companyName) {
-            updated.companyID = company.id
-            updated.companyName = company.name
             linkContact(existingID, to: company.id)
         }
 
@@ -198,8 +342,10 @@ final class AppState: ObservableObject {
         store.saveContact(updated)
         registerTags(updated.tags)
 
-        if let image {
-            _ = addContactPhoto(contactID: existingID, image: image)
+        if !images.isEmpty {
+            for image in images {
+                _ = addContactPhoto(contactID: existingID, image: image)
+            }
         }
     }
 
@@ -211,6 +357,7 @@ final class AppState: ObservableObject {
     @discardableResult
     func addCompanyPhoto(companyID: UUID, image: UIImage) -> UUID? {
         guard let index = companies.firstIndex(where: { $0.id == companyID }) else { return nil }
+        guard companies[index].photoIDs.count < 10 else { return nil }
         guard let photoID = store.saveCompanyPhoto(image, companyID: companyID) else { return nil }
         companies[index].photoIDs.insert(photoID, at: 0)
         store.saveCompany(companies[index])
@@ -220,6 +367,7 @@ final class AppState: ObservableObject {
     @discardableResult
     func addContactPhoto(contactID: UUID, image: UIImage) -> UUID? {
         guard let index = contacts.firstIndex(where: { $0.id == contactID }) else { return nil }
+        guard contacts[index].photoIDs.count < 10 else { return nil }
         guard let photoID = store.saveContactPhoto(image, contactID: contactID) else { return nil }
         contacts[index].photoIDs.insert(photoID, at: 0)
         store.saveContact(contacts[index])
@@ -234,117 +382,289 @@ final class AppState: ObservableObject {
         store.loadContactPhoto(contactID: contactID, photoID: photoID)
     }
 
-    func enrichCompany(companyID: UUID) {
+    func deleteCompanyPhoto(companyID: UUID, photoID: UUID) {
+        guard let index = companies.firstIndex(where: { $0.id == companyID }) else { return }
+        companies[index].photoIDs.removeAll { $0 == photoID }
+        store.deleteCompanyPhoto(companyID: companyID, photoID: photoID)
+        store.saveCompany(companies[index])
+    }
+
+    func deleteContactPhoto(contactID: UUID, photoID: UUID) {
+        guard let index = contacts.firstIndex(where: { $0.id == contactID }) else { return }
+        contacts[index].photoIDs.removeAll { $0 == photoID }
+        store.deleteContactPhoto(contactID: contactID, photoID: photoID)
+        store.saveContact(contacts[index])
+    }
+
+    func enrichCompany(companyID: UUID, completion: ((Bool, String) -> Void)? = nil) {
         guard let company = company(for: companyID) else { return }
+        guard !isEnrichingGlobal else { return }
+        startEnrichmentProgress()
+        let context = [
+            company.originalName,
+            company.industry,
+            company.companySize,
+            company.revenue,
+            company.headquarters,
+            company.location,
+            company.serviceType,
+            company.marketRegion
+        ]
+        .compactMap { $0 }
+        .filter { !$0.isEmpty }
+        .joined(separator: " | ")
         let request = EnrichmentRequest(
             type: .company,
             name: company.name,
             summary: company.summary,
             notes: company.notes,
             tags: company.tags,
-            rawOCRText: ""
+            tagPool: tagPool,
+            rawOCRText: "",
+            preferredLinks: [company.website, company.linkedinURL],
+            context: context
         )
         enrichmentService.enrich(request) { [weak self] result in
-            guard let result, let self else { return }
+            guard let self else { return }
+            guard let result else {
+                Task { @MainActor in
+                    self.finishEnrichmentProgress()
+                    completion?(false, "failed")
+                }
+                return
+            }
             Task { @MainActor in
-                guard let current = self.company(for: companyID) else { return }
+                guard let current = self.company(for: companyID) else {
+                    self.finishEnrichmentProgress()
+                    return
+                }
                 var updated = current
-                if !result.summary.isEmpty {
-                    updated.summary = result.summary
+                var enrichedFields: [String] = []
+                var backups: [String: String] = [:]
+                var didChange = false
+
+                func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
+                    guard !new.isEmpty, new != current else { return }
+                    enrichedFields.append(key)
+                    if !current.isEmpty {
+                        backups[key] = current
+                    }
+                    assign(new)
+                    didChange = true
+                }
+
+                func applyOptionalField(_ key: String, current: String?, new: String?, assign: (String) -> Void) {
+                    applyField(key, current: current ?? "", new: new ?? "", assign: assign)
+                }
+
+                if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
+                    updated.aiSummaryEN = result.summaryEN
+                    didChange = true
+                }
+                if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
+                    updated.aiSummaryZH = result.summaryZH
+                    didChange = true
+                }
+                if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
+                    updated.aiSummaryUpdatedAt = Date()
                 }
                 if !result.tags.isEmpty {
-                    updated.tags = Array(Set(updated.tags + result.tags))
+                    let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
+                    let poolMap = Dictionary(uniqueKeysWithValues: tagPool.map { ($0.lowercased(), $0) })
+                    let normalizedTags = filteredTags.map { tag in
+                        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return "" }
+                        return poolMap[trimmed.lowercased()] ?? trimmed
+                    }.filter { !$0.isEmpty }
+                    let combinedTags = Array(Set(updated.tags + normalizedTags))
+                    if Set(combinedTags) != Set(updated.tags) {
+                        if !updated.tags.isEmpty {
+                            backups["tags"] = updated.tags.joined(separator: " · ")
+                        }
+                        updated.tags = combinedTags
+                        enrichedFields.append("tags")
+                        didChange = true
+                    }
                 }
-                if let website = result.website, !website.isEmpty {
-                    updated.website = website
+                applyField("website", current: updated.website, new: result.website ?? "") { updated.website = $0 }
+                applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
+                applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
+                applyField("address", current: updated.address, new: result.address ?? "") { updated.address = $0 }
+                applyOptionalField("industry", current: updated.industry, new: result.industry) { updated.industry = $0 }
+                applyOptionalField("companySize", current: updated.companySize, new: result.companySize) { updated.companySize = $0 }
+                applyOptionalField("revenue", current: updated.revenue, new: result.revenue) { updated.revenue = $0 }
+                applyOptionalField("foundedYear", current: updated.foundedYear, new: result.foundedYear) { updated.foundedYear = $0 }
+                applyOptionalField("headquarters", current: updated.headquarters, new: result.headquarters) { updated.headquarters = $0 }
+
+                if !didChange {
+                    self.finishEnrichmentProgress()
+                    completion?(false, "no_changes")
+                    return
                 }
-                if let linkedin = result.linkedin, !linkedin.isEmpty {
-                    updated.linkedinURL = linkedin
-                }
-                if let phone = result.phone, !phone.isEmpty {
-                    updated.phone = phone
-                }
-                if let address = result.address, !address.isEmpty {
-                    updated.address = address
-                }
-                if let industry = result.industry, !industry.isEmpty {
-                    updated.industry = industry
-                }
-                if let size = result.companySize, !size.isEmpty {
-                    updated.companySize = size
-                }
-                if let revenue = result.revenue, !revenue.isEmpty {
-                    updated.revenue = revenue
-                }
-                if let founded = result.foundedYear, !founded.isEmpty {
-                    updated.foundedYear = founded
-                }
-                if let hq = result.headquarters, !hq.isEmpty {
-                    updated.headquarters = hq
-                }
-                if !result.suggestedLinks.isEmpty {
-                    let linkText = result.suggestedLinks.joined(separator: "\n")
-                    updated.notes = updated.notes.isEmpty ? linkText : "\(updated.notes)\n\n\(linkText)"
-                }
+
+                updated.lastEnrichedFields = enrichedFields
+                updated.lastEnrichedValues = backups
                 updated.enrichedAt = Date()
                 self.updateCompany(updated)
+                self.finishEnrichmentProgress()
+                completion?(true, "")
             }
         }
     }
 
-    func enrichContact(contactID: UUID) {
+    func enrichContact(contactID: UUID, completion: ((Bool, String) -> Void)? = nil) {
         guard let contact = contact(for: contactID) else { return }
+        guard !isEnrichingGlobal else { return }
+        startEnrichmentProgress()
+        let context = [
+            contact.title,
+            contact.department,
+            contact.location,
+            contact.companyName,
+            contact.originalCompanyName
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: " | ")
         let request = EnrichmentRequest(
             type: .contact,
             name: contact.name,
             summary: contact.title,
             notes: contact.notes,
             tags: contact.tags,
-            rawOCRText: ""
+            tagPool: tagPool,
+            rawOCRText: "",
+            preferredLinks: [contact.website, contact.linkedinURL],
+            context: context
         )
         enrichmentService.enrich(request) { [weak self] result in
-            guard let result, let self else { return }
+            guard let self else { return }
+            guard let result else {
+                Task { @MainActor in
+                    self.finishEnrichmentProgress()
+                    completion?(false, "failed")
+                }
+                return
+            }
             Task { @MainActor in
-                guard let current = self.contact(for: contactID) else { return }
+                guard let current = self.contact(for: contactID) else {
+                    self.finishEnrichmentProgress()
+                    return
+                }
                 var updated = current
-                if !result.summary.isEmpty {
-                    updated.title = result.summary
+                var enrichedFields: [String] = []
+                var backups: [String: String] = [:]
+                var didChange = false
+
+                func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
+                    guard !new.isEmpty, new != current else { return }
+                    enrichedFields.append(key)
+                    if !current.isEmpty {
+                        backups[key] = current
+                    }
+                    assign(new)
+                    didChange = true
+                }
+
+                func applyOptionalField(_ key: String, current: String?, new: String?, assign: (String) -> Void) {
+                    applyField(key, current: current ?? "", new: new ?? "", assign: assign)
+                }
+
+                if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
+                    updated.aiSummaryEN = result.summaryEN
+                    didChange = true
+                }
+                if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
+                    updated.aiSummaryZH = result.summaryZH
+                    didChange = true
+                }
+                if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
+                    updated.aiSummaryUpdatedAt = Date()
                 }
                 if !result.tags.isEmpty {
-                    updated.tags = Array(Set(updated.tags + result.tags))
+                    let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
+                    let poolMap = Dictionary(uniqueKeysWithValues: tagPool.map { ($0.lowercased(), $0) })
+                    let normalizedTags = filteredTags.map { tag in
+                        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return "" }
+                        return poolMap[trimmed.lowercased()] ?? trimmed
+                    }.filter { !$0.isEmpty }
+                    let combinedTags = Array(Set(updated.tags + normalizedTags))
+                    if Set(combinedTags) != Set(updated.tags) {
+                        if !updated.tags.isEmpty {
+                            backups["tags"] = updated.tags.joined(separator: " · ")
+                        }
+                        updated.tags = combinedTags
+                        enrichedFields.append("tags")
+                        didChange = true
+                    }
                 }
-                if let title = result.title, !title.isEmpty {
-                    updated.title = title
+                applyField("title", current: updated.title, new: result.title ?? "") { updated.title = $0 }
+                applyOptionalField("department", current: updated.department, new: result.department) { updated.department = $0 }
+                applyOptionalField("location", current: updated.location, new: result.location) { updated.location = $0 }
+                applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
+                applyField("email", current: updated.email, new: result.email ?? "") { updated.email = $0 }
+                applyOptionalField("website", current: updated.website, new: result.website) { updated.website = $0 }
+                applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
+
+                if !didChange {
+                    self.finishEnrichmentProgress()
+                    completion?(false, "no_changes")
+                    return
                 }
-                if let department = result.department, !department.isEmpty {
-                    updated.department = department
-                }
-                if let location = result.location, !location.isEmpty {
-                    updated.location = location
-                }
-                if let phone = result.phone, !phone.isEmpty {
-                    updated.phone = phone
-                }
-                if let email = result.email, !email.isEmpty {
-                    updated.email = email
-                }
-                if let website = result.website, !website.isEmpty {
-                    updated.website = website
-                }
-                if let linkedin = result.linkedin, !linkedin.isEmpty {
-                    updated.linkedinURL = linkedin
-                }
-                if !result.suggestedLinks.isEmpty {
-                    let linkText = result.suggestedLinks.joined(separator: "\n")
-                    updated.notes = updated.notes.isEmpty ? linkText : "\(updated.notes)\n\n\(linkText)"
-                }
+
+                updated.lastEnrichedFields = enrichedFields
+                updated.lastEnrichedValues = backups
                 updated.enrichedAt = Date()
                 self.updateContact(updated)
+                self.finishEnrichmentProgress()
+                completion?(true, "")
             }
         }
     }
 
-    private func purgeSampleData(
+    private func startEnrichmentProgress() {
+        progressTask?.cancel()
+        let totalStages = 5
+        let searchStages = max(1, totalStages - 2)
+        enrichmentProgress = EnrichmentProgressState(
+            stage: .analyzing,
+            progress: 1.0 / Double(totalStages),
+            totalStages: totalStages
+        )
+        progressTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            for index in 1...searchStages {
+                enrichmentProgress = EnrichmentProgressState(
+                    stage: .searching(current: index, total: searchStages),
+                    progress: Double(1 + index) / Double(totalStages),
+                    totalStages: totalStages
+                )
+                try? await Task.sleep(nanoseconds: 700_000_000)
+            }
+            enrichmentProgress = EnrichmentProgressState(
+                stage: .merging,
+                progress: Double(totalStages - 1) / Double(totalStages),
+                totalStages: totalStages
+            )
+        }
+    }
+
+    private func finishEnrichmentProgress() {
+        progressTask?.cancel()
+        progressTask = nil
+        enrichmentProgress = EnrichmentProgressState(stage: .complete, progress: 1.0, totalStages: 5)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            enrichmentProgress = nil
+        }
+    }
+
+    private func companyName(for companyID: UUID) -> String? {
+        companies.first(where: { $0.id == companyID })?.name
+    }
+
+    private static func purgeSampleData(
+        store: LocalStore,
         companies: [CompanyDocument],
         contacts: [ContactDocument]
     ) -> ([CompanyDocument], [ContactDocument]) {

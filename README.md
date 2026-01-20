@@ -1,119 +1,60 @@
-# Business Card AI Assistant
+# BusinessCardAIAssisstant
 
 [中文说明 / Chinese](README.zh.md)
 
-An iPhone app that captures business cards and company brochures to generate structured Company and Contact documents. Users can search by name, company, or business keywords, navigate between related entities, and manually edit extracted fields.
+An iPhone app for capturing business cards and company brochures, generating structured contact/company documents, and managing relationships with fast search and AI-assisted enrichment.
 
-## Project Overview
-The app turns offline business materials into a searchable relationship graph of people and companies, suitable for BD, sales, procurement, and partnership management.
+## Product Requirements
+- Detailed use cases live in `Product Requirement.md` (Chinese).
 
-## Product Requirements (PRD)
-### Target Users
-- BD, sales, marketing, PR, procurement, and anyone collecting business cards and company materials
+## Key Features
+- Capture photos (camera or library) and store them per document (up to 10 per document).
+- Contact and company detail pages with modular editing and cross-links.
+- Directory with alphabetical indexing and filters for both contacts and companies.
+- Tag pool with searchable selection and AI tag suggestions.
+- AI enrichment with multi-stage progress, field-level change tracking, and undo.
 
-### Core Value
-- Convert paper cards and brochures into structured data
-- Fast lookup by person, company, or business keywords
-- Bidirectional links between companies and contacts
+## AI Enrichment Summary
+- Uses image analysis (mini model) and multi-stage web search (thinking model).
+- Progress stages are shown globally; all interactions are blocked during enrichment.
+- Updated fields are highlighted, original values are shown, and undo is available.
+- Uncertain info is marked as "possibly inaccurate" with a yellow badge.
 
-### Core Features
-- Capture: photo scan for business cards and brochures
-- OCR extraction: local text recognition via Apple Vision
-- Document creation: create company/contact documents from OCR output
-- GPT classification: determine contact vs company before creation
-- Review before creation: user confirms fields and document type before saving
-- Document generation:
-  - Company document: company info, services, related contacts, contact links, original photos
-  - Contact document: person info, role, contact methods, company link, original photos
-- Search and filter: by name, company, business keywords
-- Manual edit: users can correct and enrich extracted data
-- Duplicate handling: detect existing contacts and confirm updates
-- Manual enrichment: user-triggered online search for profile completion
-- Recent documents: show latest created Company/Contact entries on the Capture page
+## Tech Stack
+- SwiftUI + local storage.
+- OpenAI Responses API for OCR parsing and enrichment (key in `Secrets.xcconfig`).
 
-### Information Architecture / Pages
-- Capture
-  - Large capture button and recent documents
-- Directory
-  - Search across companies/contacts and toggle list type
-  - Filters: company location, service type, target audience (B2B/B2C), market region
-- Settings
-  - Appearance mode (system/light/dark), language, and default preferences
-- Company detail page
-  - Company profile and services
-  - Related contacts with jump links
-  - Photo gallery
-  - Edit entry
-- Contact detail page
-  - Personal info, role, contact methods, notes
-  - Jump to company document
-  - Photo gallery
-  - Edit entry
+## Repository Structure
+- `BusinessCardAIAssisstant/` app source
+- `BusinessCardAIAssisstant/Services/` capture, OCR, enrichment, search
+- `BusinessCardAIAssisstant/Storage/` local persistence and photo store
+- `BusinessCardAIAssisstant/UI/` screens and reusable UI
+- `BusinessCardAIAssisstant/Models/` document models
+- `BusinessCardAIAssisstant/App/` app entry, settings, app state
 
-### Data Model (Suggested)
-- CompanyDocument
-  - Name, summary, service keywords, website/address/phone
-  - Related contacts (ContactDocument ID list)
-  - Photo list
-- ContactDocument
-  - Name, title, contact methods, email, notes
-  - Company reference (CompanyDocument ID)
-  - Photo list
+## Setup
+1. Create `BusinessCardAIAssisstant/Secrets.xcconfig` with:
+   ```
+   OPENAI_API_KEY = your_key_here
+   ```
+2. Open `BusinessCardAIAssisstant.xcodeproj` and run.
 
-### Non-Functional Requirements
-- Privacy: local-first storage; cloud sync optional later
-- Traceability: keep original photos; OCR text not stored by default
-- Extensibility: swap or add extraction providers (Vision OCR now)
+## AI Config (Local, Gitignored)
+- AI models and prompts are centralized in `BusinessCardAIAssisstant/App/AIConfig.swift`.
+- This file is gitignored so API choices and prompts stay local.
+- Each prompt block includes comments describing where it is used and why.
 
-### Account & Sync (Future)
-- Local-only storage in MVP
-- Future login options: Google or phone number account creation
+## Status (Latest)
+- Core document flow and directory are implemented.
+- AI enrichment flow is implemented with progress, field tracking, and undo.
+- Ongoing: verify end-to-end behavior and UX polish based on `Product Requirement.md`.
 
-## Project Structure (Suggested)
-- BusinessCardAIAssisstant/
-  - App/: app entry, navigation, routing
-  - UI/: screens and reusable components
-  - Models/: CompanyDocument, ContactDocument, etc.
-  - Services/
-    - CaptureService: photo capture and image management
-    - OCRService: Vision-based text recognition
-    - EnrichmentService: online enrichment stub (API to be configured locally)
-    - SearchService: indexing and query
-  - Storage/
-    - LocalStore: local DB and image store
-  - Resources/: assets, fonts, configs
-  - Tests/: unit and UI tests
+## Next Goals
+- Enable paid features (subscription or one-time unlock).
+- Allow sharing documents with other users who have the app.
+- Generate a PDF report per document for sharing or saving.
+- Select AI provider based on user region (e.g., alternate API in China).
 
-## Timeline (Example)
-| Phase | Time | Deliverables |
-| --- | --- | --- |
-| Requirement lock | Week 1 | PRD, IA, rough prototype |
-| Data model & storage | Week 2 | Company/Contact models, local storage |
-| Capture & extraction | Week 3 | Camera flow, AI extraction integration |
-| Search & linking | Week 4 | Search, company-contact navigation |
-| UI polish | Week 5 | Detail pages, edit flows, gallery |
-| Test & iterate | Week 6 | Core flow tests, bug fixes |
-
-## Status
-- Done: OCR capture, review-before-create flow, document creation, and manual enrichment flow
-- In progress: enrichment refinement and UI polish
-
-## Next Steps
-- Refine enrichment field mapping (website/phone/address)
-- Add online enrichment client (configure API key locally; do not commit)
-- Define search indexing strategy (CJK tokenization/keywords)
-- Plan optional backup and sync
-
-## Configuration (Local Only)
-- Add your API key to `BusinessCardAIAssisstant/Secrets.xcconfig` with `OPENAI_API_KEY = ...`.
-- The enrichment client uses the `gpt-4o-mini` model for cost efficiency.
-- Do not commit secrets; `.gitignore` already excludes these files.
-- Device run requires Camera permission (NSCameraUsageDescription is configured in the Xcode project).
- - First run starts with an empty dataset (no sample data).
-
-## Assets
-- App icon source: `BusinessCardAI.png` (copied into `BusinessCardAIAssisstant/Assets.xcassets/AppIcon.appiconset`).
-
-## Changelog
-- 2026-01-11: Added settings (appearance mode, language, defaults), Directory search, OCR service, GPT classification, and manual enrichment client (mini model).
-- 2026-01-11: Removed sample data, added review-before-create flow, recent documents list, and updated app icon.
+## Notes
+- App icon source: `BusinessCardAI.png`.
+- Do not commit secrets; `.gitignore` excludes them.

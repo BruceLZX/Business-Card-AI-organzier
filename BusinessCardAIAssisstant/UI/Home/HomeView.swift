@@ -7,13 +7,19 @@ struct HomeView: View {
     @State private var isPresentingCamera = false
     @State private var isPresentingCreate = false
     @State private var isProcessingOCR = false
-    @State private var capturedImage: UIImage?
+    @State private var capturedImages: [UIImage] = []
     @State private var ocrText: String = ""
     @State private var classificationType: CreateDocumentView.DocumentType = .company
     @State private var navigationTarget: CreateDocumentView.CreatedDocument?
+    @State private var prefill: CreateDocumentView.Prefill?
+    @State private var parseErrorMessage = ""
+    @State private var showParseError = false
+    @State private var showManualContact = false
+    @State private var showManualCompany = false
 
     private let ocrService = OCRService()
     private let classifier = DocumentClassifier()
+    private let extractor = OCRExtractionService()
 
     var body: some View {
         ScrollView {
@@ -76,6 +82,34 @@ struct HomeView: View {
                 .buttonStyle(.plain)
                 .disabled(isProcessingOCR)
 
+                HStack(spacing: 12) {
+                    Button {
+                        showManualContact = true
+                    } label: {
+                        Text(settings.text(.contact))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color(.secondarySystemBackground))
+                            )
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showManualCompany = true
+                    } label: {
+                        Text(settings.text(.company))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color(.secondarySystemBackground))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text(settings.text(.recentDocuments))
                         .font(.headline)
@@ -134,20 +168,49 @@ struct HomeView: View {
             )
         )
         .sheet(isPresented: $isPresentingCamera) {
-            CameraView { image in
-                handleCapture(image)
+            MultiCaptureView(maxPhotos: 5) { images in
+                handleCapture(images)
             }
+            .environmentObject(settings)
         }
         .sheet(isPresented: $isPresentingCreate) {
             CreateDocumentView(
-                image: capturedImage,
+                images: capturedImages,
                 ocrText: ocrText,
-                initialType: classificationType
+                initialType: classificationType,
+                source: .scan,
+                prefill: prefill
             ) { created in
                 navigationTarget = created
             }
                 .environmentObject(appState)
                 .environmentObject(settings)
+        }
+        .sheet(isPresented: $showManualContact) {
+            CreateDocumentView(
+                images: [],
+                ocrText: "",
+                initialType: .contact,
+                source: .manual,
+                prefill: nil
+            ) { created in
+                navigationTarget = created
+            }
+            .environmentObject(appState)
+            .environmentObject(settings)
+        }
+        .sheet(isPresented: $showManualCompany) {
+            CreateDocumentView(
+                images: [],
+                ocrText: "",
+                initialType: .company,
+                source: .manual,
+                prefill: nil
+            ) { created in
+                navigationTarget = created
+            }
+            .environmentObject(appState)
+            .environmentObject(settings)
         }
         .navigationDestination(item: $navigationTarget) { target in
             switch target.kind {
@@ -165,24 +228,97 @@ struct HomeView: View {
                 }
             }
         }
+        .alert(settings.text(.parseErrorTitle), isPresented: $showParseError) {
+            Button(settings.text(.done), role: .cancel) {}
+        } message: {
+            Text(parseErrorMessage)
+        }
         .toolbar(.hidden, for: .navigationBar)
     }
 
-    private func handleCapture(_ image: UIImage) {
-        capturedImage = image
+    private func handleCapture(_ images: [UIImage]) {
+        capturedImages = images
         isProcessingOCR = true
-        ocrService.recognizeText(in: image) { result in
+        ocrText = ""
+        extractor.parse(images: images) { parsed in
             DispatchQueue.main.async {
-                ocrText = result?.text ?? ""
-                classifier.classify(text: ocrText) { type in
-                    DispatchQueue.main.async {
+                if let parsed {
+                    if let error = parsed.error, !error.code.isEmpty {
+                        parseErrorMessage = error.code == "multiple_entities"
+                        ? settings.text(.multipleEntitiesMessage)
+                        : (error.message.isEmpty ? settings.text(.parseFailedMessage) : error.message)
+                        showParseError = true
                         isProcessingOCR = false
-                        classificationType = (type == .contact) ? .contact : .company
-                        isPresentingCreate = true
-                        appState.addCapture(image)
+                        return
+                    }
+                    let builtPrefill = CreateDocumentView.Prefill.from(parsed)
+                    classificationType = builtPrefill.type == .company ? .company : .contact
+                    if builtPrefill.type == .both {
+                        classificationType = .company
+                    }
+                    prefill = builtPrefill
+                    isProcessingOCR = false
+                    isPresentingCreate = true
+                    images.forEach { appState.addCapture($0) }
+                    return
+                }
+
+                recognizeAllText(in: images) { recognizedText in
+                    DispatchQueue.main.async {
+                        ocrText = recognizedText
+                        extractor.parse(text: ocrText) { fallbackParsed in
+                            DispatchQueue.main.async {
+                                if let fallbackParsed {
+                                    if let error = fallbackParsed.error, !error.code.isEmpty {
+                                        parseErrorMessage = error.code == "multiple_entities"
+                                        ? settings.text(.multipleEntitiesMessage)
+                                        : (error.message.isEmpty ? settings.text(.parseFailedMessage) : error.message)
+                                        showParseError = true
+                                        isProcessingOCR = false
+                                        return
+                                    }
+                                    let builtPrefill = CreateDocumentView.Prefill.from(fallbackParsed)
+                                    classificationType = builtPrefill.type == .company ? .company : .contact
+                                    if builtPrefill.type == .both {
+                                        classificationType = .company
+                                    }
+                                    prefill = builtPrefill
+                                    isProcessingOCR = false
+                                    isPresentingCreate = true
+                                    images.forEach { appState.addCapture($0) }
+                                    return
+                                }
+
+                                parseErrorMessage = settings.text(.parseFailedMessage)
+                                showParseError = true
+                                isProcessingOCR = false
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    private func recognizeAllText(in images: [UIImage], completion: @escaping (String) -> Void) {
+        guard !images.isEmpty else {
+            completion("")
+            return
+        }
+
+        var texts: [String] = Array(repeating: "", count: images.count)
+        let group = DispatchGroup()
+
+        for (index, image) in images.enumerated() {
+            group.enter()
+            ocrService.recognizeText(in: image) { result in
+                texts[index] = result?.text ?? ""
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            completion(texts.joined(separator: "\n"))
         }
     }
 

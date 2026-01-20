@@ -42,6 +42,18 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         case .dark: return .dark
         }
     }
+
+    func effectiveColorScheme(for date: Date) -> ColorScheme? {
+        switch self {
+        case .system:
+            let hour = Calendar.current.component(.hour, from: date)
+            return (hour >= 18 || hour < 6) ? .dark : .light
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
+    }
 }
 
 final class AppSettings: ObservableObject {
@@ -78,7 +90,7 @@ final class AppSettings: ObservableObject {
         enableHaptics = UserDefaults.standard.object(forKey: "app.haptics") as? Bool ?? true
         autoSaveCaptures = UserDefaults.standard.object(forKey: "app.autoSaveCaptures") as? Bool ?? true
         keepOriginalPhotos = UserDefaults.standard.object(forKey: "app.keepOriginalPhotos") as? Bool ?? true
-        enableEnrichment = UserDefaults.standard.object(forKey: "app.enableEnrichment") as? Bool ?? false
+        enableEnrichment = UserDefaults.standard.object(forKey: "app.enableEnrichment") as? Bool ?? true
     }
 
     func text(_ key: AppStringKey) -> String {

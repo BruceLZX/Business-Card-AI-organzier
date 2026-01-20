@@ -16,6 +16,14 @@ enum AppStringKey {
     case companyLocation
     case serviceType
     case tagFilter
+    case selectCompany
+    case createNewCompany
+    case linkExisting
+    case selectTags
+    case deleteDocument
+    case deleteConfirmTitle
+    case deleteConfirmMessage
+    case confirmDelete
     case targetAudience
     case marketRegion
     case resetFilters
@@ -40,6 +48,9 @@ enum AppStringKey {
     case photos
     case addPhoto
     case noPhotos
+    case aiSummaryTitle
+    case aiSummaryPlaceholder
+    case aiSummaryEmpty
     case edit
     case save
     case create
@@ -64,13 +75,30 @@ enum AppStringKey {
     case companyName
     case ocrText
     case noOCRText
+    case parseErrorTitle
+    case parseFailedMessage
+    case multipleEntitiesMessage
     case duplicateFoundTitle
     case duplicateFoundMessage
+    case possibleCompanyMatchTitle
+    case possibleCompanyMatchMessage
+    case useExistingCompany
+    case keepNewCompany
     case updateExisting
     case createNew
     case enrichButton
+    case enrichingTitle
     case enrichConfirmTitle
     case enrichConfirmMessage
+    case undoReplace
+    case enrichFailedTitle
+    case enrichFailedMessage
+    case enrichNoChangesMessage
+    case originalValue
+    case enrichStageAnalyzing
+    case enrichStageSearching
+    case enrichStageMerging
+    case enrichStageComplete
     case department
     case linkedin
     case personalSite
@@ -86,6 +114,22 @@ enum AppStringKey {
     case companyDetails
     case contactDetails
     case relatedCompany
+    case relatedCompanies
+    case linkNewCompany
+    case linkNewContact
+    case addFromLibrary
+    case takePhoto
+    case existingCompany
+    case existingContact
+    case newInfo
+    case discardCreateTitle
+    case discardCreateMessage
+    case discardCreateAction
+    case confirm
+    case unlinkConfirmTitle
+    case unlinkConfirmMessage
+    case unlinkAction
+    case enrichAgainButton
 }
 
 enum AppStrings {
@@ -105,6 +149,14 @@ enum AppStrings {
         .companyLocation: "Company Location",
         .serviceType: "Service Type",
         .tagFilter: "Tag",
+        .selectCompany: "Select Existing",
+        .createNewCompany: "Create New Company",
+        .linkExisting: "Link",
+        .selectTags: "Select Tags",
+        .deleteDocument: "Delete Document",
+        .deleteConfirmTitle: "Delete Document",
+        .deleteConfirmMessage: "This action cannot be undone.",
+        .confirmDelete: "Delete",
         .targetAudience: "Target Audience",
         .marketRegion: "Market Region",
         .resetFilters: "Reset Filters",
@@ -129,6 +181,9 @@ enum AppStrings {
         .photos: "Photos",
         .addPhoto: "Add Photo",
         .noPhotos: "No photos attached",
+        .aiSummaryTitle: "AI Summary",
+        .aiSummaryPlaceholder: "Use AI to generate a summary for this profile.",
+        .aiSummaryEmpty: "No summary found.",
         .edit: "Edit",
         .save: "Save",
         .create: "Create",
@@ -153,13 +208,30 @@ enum AppStrings {
         .companyName: "Company Name",
         .ocrText: "OCR Text",
         .noOCRText: "No OCR text available",
+        .parseErrorTitle: "Unable to Continue",
+        .parseFailedMessage: "We couldn't understand this scan. Please retake a clearer photo or create manually.",
+        .multipleEntitiesMessage: "Multiple contacts or companies detected. Please retake a focused photo or split into separate scans.",
         .duplicateFoundTitle: "Possible Duplicate",
         .duplicateFoundMessage: "A similar contact exists. Update the existing contact or create a new one?",
+        .possibleCompanyMatchTitle: "Similar Company Found",
+        .possibleCompanyMatchMessage: "We found a similar company:",
+        .useExistingCompany: "Use Existing",
+        .keepNewCompany: "Create New",
         .updateExisting: "Update Existing",
         .createNew: "Create New",
         .enrichButton: "Enrich with AI",
+        .enrichingTitle: "Enriching with AI...",
         .enrichConfirmTitle: "Confirm Enrichment",
         .enrichConfirmMessage: "Use online search to enrich this document now?",
+        .undoReplace: "Undo replace",
+        .enrichFailedTitle: "Enrichment Failed",
+        .enrichFailedMessage: "We couldn't fetch enrichment data right now. Please try again later.",
+        .enrichNoChangesMessage: "No new information was found for this profile.",
+        .originalValue: "Original",
+        .enrichStageAnalyzing: "Analyzing photos",
+        .enrichStageSearching: "Searching online (%d/%d)",
+        .enrichStageMerging: "Merging results",
+        .enrichStageComplete: "Done!",
         .department: "Department",
         .linkedin: "LinkedIn",
         .personalSite: "Website",
@@ -168,13 +240,29 @@ enum AppStrings {
         .revenue: "Revenue",
         .foundedYear: "Founded",
         .headquarters: "Headquarters",
-        .originalName: "Original Name",
-        .originalCompanyName: "Original Company Name",
+        .originalName: "Chinese Name",
+        .originalCompanyName: "Chinese Company Name",
         .profile: "Profile",
         .links: "Links",
         .companyDetails: "Company Details",
         .contactDetails: "Contact Details",
-        .relatedCompany: "Company"
+        .relatedCompany: "Company",
+        .relatedCompanies: "Companies",
+        .linkNewCompany: "Link New Company",
+        .linkNewContact: "Link New Contact",
+        .addFromLibrary: "Choose from Library",
+        .takePhoto: "Take Photo",
+        .existingCompany: "Existing Company",
+        .existingContact: "Existing Contact",
+        .newInfo: "New Info",
+        .discardCreateTitle: "Discard Changes?",
+        .discardCreateMessage: "Your current inputs will be lost.",
+        .discardCreateAction: "Discard",
+        .confirm: "Confirm",
+        .unlinkConfirmTitle: "Remove Link?",
+        .unlinkConfirmMessage: "This will only remove the association.",
+        .unlinkAction: "Remove",
+        .enrichAgainButton: "Enrich Again with AI"
     ]
 
     private static let chinese: [AppStringKey: String] = [
@@ -193,6 +281,14 @@ enum AppStrings {
         .companyLocation: "公司位置",
         .serviceType: "服务类型",
         .tagFilter: "标签",
+        .selectCompany: "选择已有公司",
+        .createNewCompany: "新建公司",
+        .linkExisting: "关联",
+        .selectTags: "选择标签",
+        .deleteDocument: "删除档案",
+        .deleteConfirmTitle: "删除档案",
+        .deleteConfirmMessage: "删除后无法恢复。",
+        .confirmDelete: "删除",
         .targetAudience: "服务对象",
         .marketRegion: "市场区域",
         .resetFilters: "重置筛选",
@@ -217,6 +313,9 @@ enum AppStrings {
         .photos: "图片",
         .addPhoto: "添加照片",
         .noPhotos: "暂无图片",
+        .aiSummaryTitle: "AI 总结",
+        .aiSummaryPlaceholder: "使用 AI 生成该档案总结。",
+        .aiSummaryEmpty: "未找到有效信息。",
         .edit: "编辑",
         .save: "保存",
         .create: "创建",
@@ -241,13 +340,30 @@ enum AppStrings {
         .companyName: "公司名称",
         .ocrText: "OCR 文本",
         .noOCRText: "暂无 OCR 文本",
+        .parseErrorTitle: "无法继续",
+        .parseFailedMessage: "无法识别此次扫描内容，请重新拍摄更清晰的照片或手动创建。",
+        .multipleEntitiesMessage: "检测到多个联系人或公司，请重新拍摄更聚焦的内容或拆分创建。",
         .duplicateFoundTitle: "可能重复",
         .duplicateFoundMessage: "检测到相似联系人，是否更新现有联系人或创建新联系人？",
+        .possibleCompanyMatchTitle: "发现相似公司",
+        .possibleCompanyMatchMessage: "检测到相似公司：",
+        .useExistingCompany: "使用已有公司",
+        .keepNewCompany: "继续新建",
         .updateExisting: "更新现有",
         .createNew: "创建新档案",
         .enrichButton: "使用 AI 补全",
+        .enrichingTitle: "AI 补全中...",
         .enrichConfirmTitle: "确认补全",
         .enrichConfirmMessage: "现在使用联网搜索补全该文档信息吗？",
+        .undoReplace: "撤销替换",
+        .enrichFailedTitle: "补全失败",
+        .enrichFailedMessage: "暂时无法获取补全信息，请稍后再试。",
+        .enrichNoChangesMessage: "未找到新的补全信息。",
+        .originalValue: "原有内容",
+        .enrichStageAnalyzing: "正在分析照片",
+        .enrichStageSearching: "正在联网搜索（%d/%d）",
+        .enrichStageMerging: "正在合并结果",
+        .enrichStageComplete: "完成！",
         .department: "部门",
         .linkedin: "领英",
         .personalSite: "个人网站",
@@ -256,13 +372,29 @@ enum AppStrings {
         .revenue: "营收",
         .foundedYear: "成立时间",
         .headquarters: "总部",
-        .originalName: "原始姓名",
-        .originalCompanyName: "原始公司名称",
+        .originalName: "中文名",
+        .originalCompanyName: "中文公司名",
         .profile: "档案",
         .links: "链接",
         .companyDetails: "公司详情",
         .contactDetails: "联系详情",
-        .relatedCompany: "所属公司"
+        .relatedCompany: "所属公司",
+        .relatedCompanies: "所属公司",
+        .linkNewCompany: "关联新公司",
+        .linkNewContact: "关联新联系人",
+        .addFromLibrary: "从图库选择",
+        .takePhoto: "拍摄照片",
+        .existingCompany: "已有公司",
+        .existingContact: "已有联系人",
+        .newInfo: "新信息",
+        .discardCreateTitle: "确认放弃当前创建？",
+        .discardCreateMessage: "当前填写内容将被丢弃。",
+        .discardCreateAction: "放弃",
+        .confirm: "确认",
+        .unlinkConfirmTitle: "取消关联？",
+        .unlinkConfirmMessage: "仅移除关联，不会删除档案。",
+        .unlinkAction: "移除",
+        .enrichAgainButton: "再次使用 AI 搜索/补全"
     ]
 
     static func text(_ key: AppStringKey, language: AppLanguage) -> String {

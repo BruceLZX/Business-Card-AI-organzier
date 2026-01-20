@@ -22,6 +22,11 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
     var notes: String
     var tags: [String]
     var relatedContactIDs: [UUID]
+    var aiSummaryEN: String = ""
+    var aiSummaryZH: String = ""
+    var aiSummaryUpdatedAt: Date?
+    var lastEnrichedFields: [String] = []
+    var lastEnrichedValues: [String: String] = [:]
     var photoIDs: [UUID]
     var sourceLanguageCode: String?
     var enrichedAt: Date?

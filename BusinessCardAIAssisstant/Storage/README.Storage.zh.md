@@ -2,11 +2,8 @@
 
 [English / 英文](README.Storage.md)
 
-本地存储层，负责文档与图片的持久化。
+本地存储模块。
 
-结构（Application Support 目录）：
-- BusinessCardData/Companies/<company-id>/company.json
-- BusinessCardData/Companies/<company-id>/photos/<photo-id>.jpg
-- BusinessCardData/Contacts/<contact-id>/contact.json
-- BusinessCardData/Contacts/<contact-id>/photos/<photo-id>.jpg
-- BusinessCardData/Captures/<photo-id>.jpg
+包含：
+- `LocalStore`（读写 JSON 数据）。
+- 联系人/公司图片的本地存储管理。

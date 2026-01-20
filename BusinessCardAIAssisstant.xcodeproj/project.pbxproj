@@ -402,6 +402,7 @@
 				EXCLUDED_RESOURCE_FILE_NAMES = "README*.md";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Capture business cards and brochures to create searchable documents.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Select photos to attach to documents.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -432,6 +433,7 @@
 				EXCLUDED_RESOURCE_FILE_NAMES = "README*.md";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Capture business cards and brochures to create searchable documents.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Select photos to attach to documents.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

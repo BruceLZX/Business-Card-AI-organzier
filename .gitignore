@@ -5,7 +5,6 @@
 *.xccheckout
 *.xcscmblueprint
 *.xcbkptlist
-*.xcworkspace
 *.xcuserdata/
 *.moved-aside
 DerivedData/
@@ -37,7 +36,8 @@ fastlane/test_output/
 Secrets.plist
 Secrets.xcconfig
 Secrets*.xcconfig
+BusinessCardAIAssisstant/App/AIConfig.swift
 
-# Local assets
-BusinessCardAI.png
-BusinessCardAIAssisstant.xcodeproj/project.pbxproj
+# Local build artifacts
+*.xcarchive
+*.ipa

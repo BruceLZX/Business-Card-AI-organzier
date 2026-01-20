@@ -2,4 +2,10 @@
 
 [English / 英文](README.Services.md)
 
-服务层目录，包括拍照接入、OCR 识别（Vision）、GPT 分类、搜索与在线补全客户端。
+拍照、OCR 解析、AI 补全与搜索服务。
+
+主要服务：
+- `CaptureService`
+- `OCRService` / `OCRExtractionService`
+- `EnrichmentService`（联网搜索、总结、标签）
+- `SearchService`

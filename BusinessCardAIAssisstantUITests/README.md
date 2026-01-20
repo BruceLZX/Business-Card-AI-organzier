@@ -1,5 +1,5 @@
-# BusinessCardAIAssisstantUITests
+# UI Tests
 
 [中文说明 / Chinese](README.zh.md)
 
-UI tests for end-to-end user flows.
+UI test targets and scenarios.
