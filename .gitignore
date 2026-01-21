@@ -41,3 +41,5 @@ BusinessCardAIAssisstant/App/AIConfig.swift
 # Local build artifacts
 *.xcarchive
 *.ipa
+Product Requirement.md
+.gitignore

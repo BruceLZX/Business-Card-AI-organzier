@@ -3,78 +3,60 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var settings: AppSettings
     @EnvironmentObject private var appState: AppState
+    @State private var selection: TabSelection = .create
+    @State private var createResetID = UUID()
+    @State private var directoryResetID = UUID()
+    @State private var settingsResetID = UUID()
+
+    private enum TabSelection {
+        case create
+        case directory
+        case settings
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 900)) { context in
-            ZStack {
-                TabView {
-                    NavigationStack {
-                        HomeView()
-                    }
-                    .tabItem {
-                        Label(settings.text(.captureTitle), systemImage: "camera.viewfinder")
-                    }
-
-                    NavigationStack {
-                        DirectoryView()
-                    }
-                    .tabItem {
-                        Label(settings.text(.directoryTitle), systemImage: "list.bullet.rectangle")
-                    }
-
-                    NavigationStack {
-                        SettingsView()
-                    }
-                    .tabItem {
-                        Label(settings.text(.settingsTitle), systemImage: "gearshape")
-                    }
+            TabView(selection: $selection) {
+                NavigationStack {
+                    HomeView()
                 }
-                .tint(settings.accentColor)
-                .preferredColorScheme(settings.appearance.effectiveColorScheme(for: context.date))
-                .allowsHitTesting(!appState.isEnrichingGlobal)
+                .id(createResetID)
+                .tabItem {
+                    Label(settings.text(.captureTitle), systemImage: "camera.viewfinder")
+                }
+                .tag(TabSelection.create)
 
-                if let progress = appState.enrichmentProgress {
-                    EnrichmentOverlay(progress: progress)
+                NavigationStack {
+                    DirectoryView()
+                }
+                .id(directoryResetID)
+                .tabItem {
+                    Label(settings.text(.directoryTitle), systemImage: "list.bullet.rectangle")
+                }
+                .tag(TabSelection.directory)
+
+                NavigationStack {
+                    SettingsView()
+                }
+                .id(settingsResetID)
+                .tabItem {
+                    Label(settings.text(.settingsTitle), systemImage: "gearshape")
+                }
+                .tag(TabSelection.settings)
+            }
+            .tint(settings.accentColor)
+            .preferredColorScheme(settings.appearance.effectiveColorScheme(for: context.date))
+            .allowsHitTesting(!appState.isEnrichingGlobal)
+            .onChange(of: selection) { _, newValue in
+                switch newValue {
+                case .create:
+                    createResetID = UUID()
+                case .directory:
+                    directoryResetID = UUID()
+                case .settings:
+                    settingsResetID = UUID()
                 }
             }
-        }
-    }
-}
-
-private struct EnrichmentOverlay: View {
-    @EnvironmentObject private var settings: AppSettings
-    let progress: EnrichmentProgressState
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.15)
-                .ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 12) {
-                Text(stageText)
-                    .font(.headline)
-                    .foregroundStyle(.blue)
-                ProgressView(value: progress.progress)
-                    .progressViewStyle(.linear)
-            }
-            .padding(16)
-            .frame(maxWidth: 320)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(.secondarySystemBackground))
-            )
-        }
-    }
-
-    private var stageText: String {
-        switch progress.stage {
-        case .analyzing:
-            return settings.text(.enrichStageAnalyzing)
-        case .searching(let current, let total):
-            return String(format: settings.text(.enrichStageSearching), current, total)
-        case .merging:
-            return settings.text(.enrichStageMerging)
-        case .complete:
-            return settings.text(.enrichStageComplete)
         }
     }
 }

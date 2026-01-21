@@ -13,29 +13,29 @@ struct EnrichmentRequest {
     let notes: String
     let tags: [String]
     let tagPool: [String]
-    let rawOCRText: String
+    let photoInsights: String
     let preferredLinks: [String?]
     let context: String
 }
 
 struct EnrichmentResult {
-    let summaryEN: String
-    let summaryZH: String
-    let tags: [String]
-    let suggestedLinks: [String]
-    let website: String?
-    let linkedin: String?
-    let phone: String?
-    let address: String?
-    let industry: String?
-    let companySize: String?
-    let revenue: String?
-    let foundedYear: String?
-    let headquarters: String?
-    let title: String?
-    let department: String?
-    let location: String?
-    let email: String?
+    var summaryEN: String
+    var summaryZH: String
+    var tags: [String]
+    var suggestedLinks: [String]
+    var website: String?
+    var linkedin: String?
+    var phone: String?
+    var address: String?
+    var industry: String?
+    var companySize: String?
+    var revenue: String?
+    var foundedYear: String?
+    var headquarters: String?
+    var title: String?
+    var department: String?
+    var location: String?
+    var email: String?
 }
 
 struct OCRParsedResult {
@@ -248,12 +248,16 @@ private struct OCRPayload: Decodable {
 
 protocol EnrichmentProviding {
     func buildPrompt(for request: EnrichmentRequest) -> String
-    func enrich(_ request: EnrichmentRequest, completion: @escaping (EnrichmentResult?) -> Void)
+    func enrich(
+        _ request: EnrichmentRequest,
+        tagLanguage: AppLanguage,
+        completion: @escaping (EnrichmentResult?) -> Void
+    )
 }
 
 final class EnrichmentService: EnrichmentProviding {
     private let client = OpenAIClient()
-    private let thinkingModel = "o3-mini"
+    private let extractor = OCRExtractionService()
 
     func hasValidAPIKey() -> Bool {
         guard let apiKey = client.apiKey else { return false }
@@ -273,27 +277,205 @@ final class EnrichmentService: EnrichmentProviding {
             notes: request.notes,
             tags: request.tags,
             tagPool: request.tagPool,
-            rawOCRText: request.rawOCRText,
+            photoInsights: request.photoInsights,
             preferredLinks: preferredLinks,
-            context: request.context
+            context: request.context,
+            searchFocus: "official sources, professional profiles"
         )
     }
 
-    func enrich(_ request: EnrichmentRequest, completion: @escaping (EnrichmentResult?) -> Void) {
+    func enrich(
+        _ request: EnrichmentRequest,
+        tagLanguage: AppLanguage,
+        progress: ((EnrichmentStage) -> Void)? = nil,
+        completion: @escaping (EnrichmentResult?, String?) -> Void
+    ) {
         guard let apiKey = client.apiKey, !apiKey.isEmpty else {
-            completion(nil)
+            completion(nil, "missing_api_key")
             return
         }
 
-        let prompt = buildPrompt(for: request)
+        let focuses = [
+            "official sources, professional profiles",
+            "news, press releases, market databases"
+        ]
+        performSearch(request: request, focus: focuses[0]) { [weak self] primary, errorCode in
+            guard let self else { return }
+            guard let primary else {
+                completion(nil, errorCode ?? "search_failed")
+                return
+            }
+            self.performSearch(request: request, focus: focuses[1]) { secondary, _ in
+                progress?(.searching(current: 2, total: 2))
+                let merged = self.mergeResults(primary: primary, secondary: secondary)
+                progress?(.merging)
+                self.generateTags(
+                    request: request,
+                    summaryEN: merged.summaryEN,
+                    summaryZH: merged.summaryZH,
+                    tagLanguage: tagLanguage
+                ) { tags in
+                    var updated = merged
+                    if !tags.isEmpty {
+                        updated.tags = tags
+                    }
+                    completion(updated, nil)
+                }
+            }
+        }
+    }
+
+    func photoInsights(type: EnrichmentRequest.TargetType, images: [UIImage], completion: @escaping (String) -> Void) {
+        guard !images.isEmpty else {
+            completion("")
+            return
+        }
+        guard let apiKey = client.apiKey, !apiKey.isEmpty else {
+            completion("")
+            return
+        }
+        extractor.parse(images: images) { parsed in
+            guard let parsed else {
+                completion("")
+                return
+            }
+            completion(Self.buildPhotoInsights(from: parsed, type: type))
+        }
+    }
+
+    private func performSearch(
+        request: EnrichmentRequest,
+        focus: String,
+        completion: @escaping (EnrichmentResult?, String?) -> Void
+    ) {
+        guard let apiKey = client.apiKey, !apiKey.isEmpty else {
+            completion(nil, "missing_api_key")
+            return
+        }
+        let preferredLinks = request.preferredLinks
+            .compactMap { $0 }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: ", ")
+        let prompt = AIConfig.enrichmentPrompt(
+            typeLabel: request.type == .company ? "company" : "contact",
+            name: request.name,
+            summary: request.summary,
+            notes: request.notes,
+            tags: request.tags,
+            tagPool: request.tagPool,
+            photoInsights: request.photoInsights,
+            preferredLinks: preferredLinks,
+            context: request.context,
+            searchFocus: focus
+        )
         client.send(prompt: prompt, model: AIConfig.enrichmentModel, apiKey: apiKey, tools: [["type": "web_search"]]) { result in
             switch result {
             case .success(let text):
-                completion(Self.parseResult(from: text))
+                guard let parsed = Self.parseResult(from: text) else {
+                    completion(nil, "parse_failed")
+                    return
+                }
+                if Self.isEmptyResult(parsed) {
+                    completion(nil, "empty_result")
+                    return
+                }
+                completion(parsed, nil)
             case .failure:
-                completion(nil)
+                completion(nil, "network_error")
             }
         }
+    }
+
+    private func generateTags(
+        request: EnrichmentRequest,
+        summaryEN: String,
+        summaryZH: String,
+        tagLanguage: AppLanguage,
+        completion: @escaping ([String]) -> Void
+    ) {
+        guard let apiKey = client.apiKey, !apiKey.isEmpty else {
+            completion([])
+            return
+        }
+        let prompt = AIConfig.taggingPrompt(
+            typeLabel: request.type == .company ? "company" : "contact",
+            tagPool: request.tagPool,
+            existingTags: request.tags,
+            summaryEN: summaryEN,
+            summaryZH: summaryZH,
+            context: request.context,
+            photoInsights: request.photoInsights,
+            targetLanguage: tagLanguage == .chinese ? "Chinese" : "English"
+        )
+        client.send(prompt: prompt, model: AIConfig.taggingModel, apiKey: apiKey, tools: []) { result in
+            switch result {
+            case .success(let text):
+                let tags = Self.parseTags(from: text)
+                completion(tags)
+            case .failure:
+                completion([])
+            }
+        }
+    }
+
+    private func mergeResults(primary: EnrichmentResult, secondary: EnrichmentResult?) -> EnrichmentResult {
+        guard let secondary else { return primary }
+        var merged = primary
+        if merged.summaryEN.isEmpty { merged.summaryEN = secondary.summaryEN }
+        if merged.summaryZH.isEmpty { merged.summaryZH = secondary.summaryZH }
+        let mergedTags = Array(Set(merged.tags + secondary.tags))
+        merged.tags = mergedTags
+        merged.suggestedLinks = Array(Set(merged.suggestedLinks + secondary.suggestedLinks))
+        if merged.website == nil || merged.website?.isEmpty == true { merged.website = secondary.website }
+        if merged.linkedin == nil || merged.linkedin?.isEmpty == true { merged.linkedin = secondary.linkedin }
+        if merged.phone == nil || merged.phone?.isEmpty == true { merged.phone = secondary.phone }
+        if merged.address == nil || merged.address?.isEmpty == true { merged.address = secondary.address }
+        if merged.industry == nil || merged.industry?.isEmpty == true { merged.industry = secondary.industry }
+        if merged.companySize == nil || merged.companySize?.isEmpty == true { merged.companySize = secondary.companySize }
+        if merged.revenue == nil || merged.revenue?.isEmpty == true { merged.revenue = secondary.revenue }
+        if merged.foundedYear == nil || merged.foundedYear?.isEmpty == true { merged.foundedYear = secondary.foundedYear }
+        if merged.headquarters == nil || merged.headquarters?.isEmpty == true { merged.headquarters = secondary.headquarters }
+        if merged.title == nil || merged.title?.isEmpty == true { merged.title = secondary.title }
+        if merged.department == nil || merged.department?.isEmpty == true { merged.department = secondary.department }
+        if merged.location == nil || merged.location?.isEmpty == true { merged.location = secondary.location }
+        if merged.email == nil || merged.email?.isEmpty == true { merged.email = secondary.email }
+        return merged
+    }
+
+    private static func buildPhotoInsights(from parsed: OCRParsedResult, type: EnrichmentRequest.TargetType) -> String {
+        var parts: [String] = []
+        func append(_ label: String, _ value: String?) {
+            guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            parts.append("\(label): \(value)")
+        }
+        if let company = parsed.company, type == .company || parsed.type == .both {
+            append("Company Name EN", company.nameEN)
+            append("Company Name ZH", company.nameZH)
+            append("Summary", company.summary)
+            append("Industry", company.industry)
+            append("Service Type", company.serviceType)
+            append("Market Region", company.marketRegion)
+            append("Location EN", company.locationEN)
+            append("Location ZH", company.locationZH)
+            append("Website", company.website)
+            append("Phone", company.phone)
+            append("Address", company.address)
+        }
+        if let contact = parsed.contact, type == .contact || parsed.type == .both {
+            append("Contact Name EN", contact.nameEN)
+            append("Contact Name ZH", contact.nameZH)
+            append("Title", contact.title)
+            append("Department", contact.department)
+            append("Company Name EN", contact.companyNameEN)
+            append("Company Name ZH", contact.companyNameZH)
+            append("Phone", contact.phone)
+            append("Email", contact.email)
+            append("Location EN", contact.locationEN)
+            append("Location ZH", contact.locationZH)
+            append("Website", contact.website)
+            append("LinkedIn", contact.linkedin)
+        }
+        return parts.joined(separator: " | ")
     }
 
     private static func parseResult(from text: String) -> EnrichmentResult? {
@@ -319,6 +501,35 @@ final class EnrichmentService: EnrichmentProviding {
             location: payload.location,
             email: payload.email
         )
+    }
+
+    private static func isEmptyResult(_ result: EnrichmentResult) -> Bool {
+        let values: [String] = [
+            result.summaryEN,
+            result.summaryZH,
+            result.website ?? "",
+            result.linkedin ?? "",
+            result.phone ?? "",
+            result.address ?? "",
+            result.industry ?? "",
+            result.companySize ?? "",
+            result.revenue ?? "",
+            result.foundedYear ?? "",
+            result.headquarters ?? "",
+            result.title ?? "",
+            result.department ?? "",
+            result.location ?? "",
+            result.email ?? ""
+        ]
+        let hasValue = values.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return !hasValue && result.tags.isEmpty && result.suggestedLinks.isEmpty
+    }
+
+    private static func parseTags(from text: String) -> [String] {
+        guard let json = extractJSON(from: text) else { return [] }
+        guard let data = json.data(using: .utf8) else { return [] }
+        guard let payload = try? JSONDecoder().decode(TaggingPayload.self, from: data) else { return [] }
+        return (payload.tags ?? []).filter { !$0.contains(" ") && !$0.contains("\t") }
     }
 
     static func extractJSON(from text: String) -> String? {
@@ -347,6 +558,10 @@ private struct EnrichmentPayload: Decodable {
     let department: String?
     let location: String?
     let email: String?
+}
+
+private struct TaggingPayload: Decodable {
+    let tags: [String]?
 }
 
 private final class OpenAIClient {
@@ -503,6 +718,9 @@ private struct OpenAIResponse: Decodable {
 
 private enum SecretsLoader {
     static func apiKeyFromBundle() -> String? {
+        if let info = Bundle.main.infoDictionary?["OPENAI_API_KEY"] as? String, !info.isEmpty {
+            return info
+        }
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "xcconfig") else {
             return nil
         }

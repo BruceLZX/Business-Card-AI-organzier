@@ -114,13 +114,13 @@ struct HomeView: View {
                     Text(settings.text(.recentDocuments))
                         .font(.headline)
 
-                    if appState.recentDocuments.isEmpty {
+                    if appState.recentDocuments(for: settings.language).isEmpty {
                         Text(settings.text(.noRecentDocuments))
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 8)
                     } else {
                         VStack(spacing: 12) {
-                            ForEach(appState.recentDocuments) { item in
+                            ForEach(appState.recentDocuments(for: settings.language)) { item in
                                 NavigationLink {
                                     destinationView(for: item)
                                 } label: {
@@ -167,6 +167,22 @@ struct HomeView: View {
                 endPoint: .bottom
             )
         )
+        .onAppear {
+            appState.companies.forEach { company in
+                appState.ensureCompanyLocalization(companyID: company.id, targetLanguage: settings.language)
+            }
+            appState.contacts.forEach { contact in
+                appState.ensureContactLocalization(contactID: contact.id, targetLanguage: settings.language)
+            }
+        }
+        .onChange(of: settings.language) { _, _ in
+            appState.companies.forEach { company in
+                appState.ensureCompanyLocalization(companyID: company.id, targetLanguage: settings.language)
+            }
+            appState.contacts.forEach { contact in
+                appState.ensureContactLocalization(contactID: contact.id, targetLanguage: settings.language)
+            }
+        }
         .sheet(isPresented: $isPresentingCamera) {
             MultiCaptureView(maxPhotos: 5) { images in
                 handleCapture(images)

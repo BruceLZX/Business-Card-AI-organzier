@@ -82,7 +82,12 @@ final class AppSettings: ObservableObject {
 
     init() {
         let storedLanguage = UserDefaults.standard.string(forKey: "app.language")
-        language = AppLanguage(rawValue: storedLanguage ?? "") ?? .english
+        if let storedLanguage, let stored = AppLanguage(rawValue: storedLanguage) {
+            language = stored
+        } else {
+            let prefersChinese = Locale.preferredLanguages.first?.lowercased().hasPrefix("zh") == true
+            language = prefersChinese ? .chinese : .english
+        }
 
         let storedAppearance = UserDefaults.standard.string(forKey: "app.appearance")
         appearance = AppAppearance(rawValue: storedAppearance ?? "") ?? .system

@@ -93,6 +93,9 @@ enum AppStringKey {
     case undoReplace
     case enrichFailedTitle
     case enrichFailedMessage
+    case enrichNetworkMessage
+    case enrichParseMessage
+    case enrichEmptyResultMessage
     case enrichMissingKeyMessage
     case enrichNoChangesMessage
     case originalValue
@@ -136,7 +139,7 @@ enum AppStringKey {
 
 enum AppStrings {
     private static let english: [AppStringKey: String] = [
-        .captureTitle: "Capture",
+        .captureTitle: "Create",
         .captureSubtitle: "Capture a card or brochure to start building documents.",
         .addButton: "Add",
         .recentCaptures: "Recent Captures",
@@ -228,6 +231,9 @@ enum AppStrings {
         .undoReplace: "Undo replace",
         .enrichFailedTitle: "Enrichment Failed",
         .enrichFailedMessage: "We couldn't fetch enrichment data right now. Please try again later.",
+        .enrichNetworkMessage: "Network error. Please check your connection and try again.",
+        .enrichParseMessage: "We couldn't parse the enrichment response. Please try again later.",
+        .enrichEmptyResultMessage: "No enrichment data was returned. Please try again later.",
         .enrichMissingKeyMessage: "Missing API key. Add it to AIConfig.swift and try again.",
         .enrichNoChangesMessage: "No new information was found for this profile.",
         .originalValue: "Original",
@@ -270,7 +276,7 @@ enum AppStrings {
     ]
 
     private static let chinese: [AppStringKey: String] = [
-        .captureTitle: "拍照",
+        .captureTitle: "创建",
         .captureSubtitle: "拍摄名片或资料，快速建立文档。",
         .addButton: "添加",
         .recentCaptures: "最近拍摄",
@@ -362,6 +368,9 @@ enum AppStrings {
         .undoReplace: "撤销替换",
         .enrichFailedTitle: "补全失败",
         .enrichFailedMessage: "暂时无法获取补全信息，请稍后再试。",
+        .enrichNetworkMessage: "网络错误，请检查网络后重试。",
+        .enrichParseMessage: "补全结果解析失败，请稍后重试。",
+        .enrichEmptyResultMessage: "未返回补全结果，请稍后重试。",
         .enrichMissingKeyMessage: "未检测到 API Key，请在 AIConfig.swift 中填写后重试。",
         .enrichNoChangesMessage: "未找到新的补全信息。",
         .originalValue: "原有内容",

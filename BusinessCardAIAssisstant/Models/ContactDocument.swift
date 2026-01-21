@@ -24,6 +24,20 @@ struct ContactDocument: Identifiable, Hashable, Codable {
     var aiSummaryUpdatedAt: Date?
     var lastEnrichedFields: [String] = []
     var lastEnrichedValues: [String: String] = [:]
+    var localizedNameEN: String?
+    var localizedNameZH: String?
+    var localizedTitleEN: String?
+    var localizedTitleZH: String?
+    var localizedDepartmentEN: String?
+    var localizedDepartmentZH: String?
+    var localizedLocationEN: String?
+    var localizedLocationZH: String?
+    var localizedCompanyNameEN: String?
+    var localizedCompanyNameZH: String?
+    var localizedTagsEN: [String]?
+    var localizedTagsZH: [String]?
+    var localizationSignatureEN: String?
+    var localizationSignatureZH: String?
     var photoIDs: [UUID]
     var sourceLanguageCode: String?
     var enrichedAt: Date?

@@ -56,5 +56,5 @@ An iPhone app for capturing business cards and company brochures, generating str
 - Select AI provider based on user region (e.g., alternate API in China).
 
 ## Notes
-- App icon source: `BusinessCardAI.png`.
+- App icon lives in `BusinessCardAIAssisstant/Assets.xcassets/AppIcon.appiconset`.
 - Do not commit secrets; `.gitignore` excludes them.

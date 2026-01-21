@@ -59,17 +59,18 @@ struct DirectoryView: View {
                                                     CompanyDetailView(company: company)
                                                 } label: {
                                                     VStack(alignment: .leading, spacing: 8) {
-                                                        Text(displayCompanyName(for: company))
-                                                            .font(.headline)
-                                                        Text(company.serviceType)
-                                                            .font(.subheadline)
+                                                    Text(displayCompanyName(for: company))
+                                                        .font(.headline)
+                                                    Text(company.localizedServiceType(for: settings.language))
+                                                        .font(.subheadline)
+                                                        .foregroundStyle(.secondary)
+                                                    let tags = company.tags
+                                                    if !tags.isEmpty {
+                                                        Text(tags.joined(separator: " · "))
+                                                            .font(.caption)
                                                             .foregroundStyle(.secondary)
-                                                        if !company.tags.isEmpty {
-                                                            Text(company.tags.joined(separator: " · "))
-                                                                .font(.caption)
-                                                                .foregroundStyle(.secondary)
-                                                        }
                                                     }
+                                                }
                                                     .frame(maxWidth: .infinity, alignment: .leading)
                                                     .padding(16)
                                                     .background(
@@ -103,8 +104,9 @@ struct DirectoryView: View {
                                                     Text(contactSubtitle(for: contact))
                                                         .font(.subheadline)
                                                         .foregroundStyle(.secondary)
-                                                    if !contact.tags.isEmpty {
-                                                        Text(contact.tags.joined(separator: " · "))
+                                                    let tags = contact.tags
+                                                    if !tags.isEmpty {
+                                                        Text(tags.joined(separator: " · "))
                                                             .font(.caption)
                                                             .foregroundStyle(.secondary)
                                                         }
@@ -149,6 +151,21 @@ struct DirectoryView: View {
         .sheet(isPresented: $isPresentingFilters) {
             FilterSheetView(filters: $filters)
                 .environmentObject(settings)
+        }
+        .onAppear {
+            refreshLocalizations()
+        }
+        .onChange(of: settings.language) { _, _ in
+            refreshLocalizations()
+        }
+    }
+
+    private func refreshLocalizations() {
+        appState.companies.forEach { company in
+            appState.ensureCompanyLocalization(companyID: company.id, targetLanguage: settings.language)
+        }
+        appState.contacts.forEach { contact in
+            appState.ensureContactLocalization(contactID: contact.id, targetLanguage: settings.language)
         }
     }
 
@@ -216,18 +233,20 @@ struct DirectoryView: View {
         let companies = companies(for: contact)
         let primaryName = contact.companyName.isEmpty
         ? displayCompanyName(for: companies.first)
-        : localizedText(primary: contact.companyName, fallback: contact.originalCompanyName)
+        : contact.localizedCompanyName(for: settings.language)
         if companies.count > 1 {
             let extraCount = max(0, companies.count - 1)
             let companyLabel = settings.text(.companies).lowercased()
             let companyText = primaryName.isEmpty ? "\(extraCount + 1) \(companyLabel)" : "\(primaryName) +\(extraCount)"
-            return contact.title.isEmpty ? companyText : "\(contact.title) · \(companyText)"
+            let title = contact.localizedTitle(for: settings.language)
+            return title.isEmpty ? companyText : "\(title) · \(companyText)"
         }
         let companyText = primaryName
         if companyText.isEmpty {
-            return contact.title
+            return contact.localizedTitle(for: settings.language)
         }
-        return contact.title.isEmpty ? companyText : "\(contact.title) · \(companyText)"
+        let title = contact.localizedTitle(for: settings.language)
+        return title.isEmpty ? companyText : "\(title) · \(companyText)"
     }
 
     private func initialLetter(from text: String) -> String {
@@ -248,22 +267,11 @@ struct DirectoryView: View {
 
     private func displayCompanyName(for company: CompanyDocument?) -> String {
         guard let company else { return "" }
-        return localizedText(primary: company.name, fallback: company.originalName)
+        return company.localizedName(for: settings.language)
     }
 
     private func displayContactName(for contact: ContactDocument) -> String {
-        return localizedText(primary: contact.name, fallback: contact.originalName)
-    }
-
-    private func localizedText(primary: String, fallback: String?) -> String {
-        let preferred: String
-        switch settings.language {
-        case .chinese:
-            preferred = fallback ?? primary
-        case .english:
-            preferred = primary.isEmpty ? (fallback ?? "") : primary
-        }
-        return preferred.isEmpty ? (fallback ?? primary) : preferred
+        return contact.localizedName(for: settings.language)
     }
 
     private func sectionID(for key: String, page: PageType) -> String {

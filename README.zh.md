@@ -55,5 +55,5 @@
 - 根据用户地区选择 AI 服务（如中国区使用其他 API）。
 
 ## 备注
-- App icon 源文件：`BusinessCardAI.png`。
+- App icon 位于 `BusinessCardAIAssisstant/Assets.xcassets/AppIcon.appiconset`。
 - 密钥不提交，`.gitignore` 已排除相关文件。

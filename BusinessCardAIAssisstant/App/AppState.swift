@@ -2,19 +2,6 @@ import Foundation
 import UIKit
 import SwiftUI
 
-enum EnrichmentStage: Equatable {
-    case analyzing
-    case searching(current: Int, total: Int)
-    case merging
-    case complete
-}
-
-struct EnrichmentProgressState: Equatable {
-    let stage: EnrichmentStage
-    let progress: Double
-    let totalStages: Int
-}
-
 @MainActor
 final class AppState: ObservableObject {
     @Published var companies: [CompanyDocument]
@@ -23,30 +10,32 @@ final class AppState: ObservableObject {
     @Published var tagPool: [String] = []
     @Published var enrichmentProgress: EnrichmentProgressState?
 
-    private var progressTask: Task<Void, Never>?
-
     var isEnrichingGlobal: Bool {
         enrichmentProgress != nil
     }
 
-    var recentDocuments: [RecentDocument] {
+    func recentDocuments(for language: AppLanguage) -> [RecentDocument] {
         let companyItems = companies.map { company in
-            RecentDocument(
+            let subtitle = (company.localizedIndustry(for: language) ?? "").isEmpty
+                ? company.localizedServiceType(for: language)
+                : company.localizedIndustry(for: language) ?? company.localizedServiceType(for: language)
+            return RecentDocument(
                 id: company.id,
                 kind: .company,
-                title: company.name,
-                subtitle: company.industry?.isEmpty == false ? company.industry! : company.serviceType,
+                title: company.localizedName(for: language),
+                subtitle: subtitle,
                 date: company.createdAt ?? .distantPast
             )
         }
 
         let contactItems = contacts.map { contact in
-            let primaryName = contact.companyName.isEmpty ? contact.additionalCompanyNames.first ?? "" : contact.companyName
-            let subtitle = primaryName.isEmpty ? contact.title : "\(contact.title) · \(primaryName)"
+            let primaryName = contact.localizedCompanyName(for: language)
+            let title = contact.localizedTitle(for: language)
+            let subtitle = primaryName.isEmpty ? title : (title.isEmpty ? primaryName : "\(title) · \(primaryName)")
             return RecentDocument(
                 id: contact.id,
                 kind: .contact,
-                title: contact.name,
+                title: contact.localizedName(for: language),
                 subtitle: subtitle,
                 date: contact.createdAt ?? .distantPast
             )
@@ -60,6 +49,7 @@ final class AppState: ObservableObject {
 
     private let store: LocalStore
     private let enrichmentService = EnrichmentService()
+    private let translationService = TranslationService()
 
     init(store: LocalStore = LocalStore()) {
         self.store = store
@@ -358,7 +348,7 @@ final class AppState: ObservableObject {
     @discardableResult
     func addCompanyPhoto(companyID: UUID, image: UIImage) -> UUID? {
         guard let index = companies.firstIndex(where: { $0.id == companyID }) else { return nil }
-        guard companies[index].photoIDs.count < 10 else { return nil }
+        guard companies[index].photoIDs.count < 20 else { return nil }
         guard let photoID = store.saveCompanyPhoto(image, companyID: companyID) else { return nil }
         companies[index].photoIDs.insert(photoID, at: 0)
         store.saveCompany(companies[index])
@@ -397,7 +387,11 @@ final class AppState: ObservableObject {
         store.saveContact(contacts[index])
     }
 
-    func enrichCompany(companyID: UUID, completion: ((Bool, String) -> Void)? = nil) {
+    func enrichCompany(
+        companyID: UUID,
+        tagLanguage: AppLanguage = .english,
+        completion: ((Bool, String) -> Void)? = nil
+    ) {
         guard let company = company(for: companyID) else { return }
         guard !isEnrichingGlobal else { return }
         guard enrichmentService.hasValidAPIKey() else {
@@ -407,9 +401,14 @@ final class AppState: ObservableObject {
         startEnrichmentProgress()
         let context = [
             company.originalName,
+            company.website,
+            company.linkedinURL,
+            company.phone,
+            company.address,
             company.industry,
             company.companySize,
             company.revenue,
+            company.foundedYear,
             company.headquarters,
             company.location,
             company.serviceType,
@@ -418,107 +417,120 @@ final class AppState: ObservableObject {
         .compactMap { $0 }
         .filter { !$0.isEmpty }
         .joined(separator: " | ")
-        let request = EnrichmentRequest(
-            type: .company,
-            name: company.name,
-            summary: company.summary,
-            notes: company.notes,
-            tags: company.tags,
-            tagPool: tagPool,
-            rawOCRText: "",
-            preferredLinks: [company.website, company.linkedinURL],
-            context: context
-        )
-        enrichmentService.enrich(request) { [weak self] result in
+        let photos = company.photoIDs.compactMap { photoID in
+            loadCompanyPhoto(companyID: companyID, photoID: photoID)
+        }
+        enrichmentService.photoInsights(type: .company, images: photos) { [weak self] insights in
             guard let self else { return }
-            guard let result else {
-                Task { @MainActor in
-                    self.finishEnrichmentProgress()
-                    completion?(false, "failed")
-                }
-                return
-            }
-            Task { @MainActor in
-                guard let current = self.company(for: companyID) else {
-                    self.finishEnrichmentProgress()
+            self.updateProgress(stage: .searching(current: 1, total: 2))
+            let request = EnrichmentRequest(
+                type: .company,
+                name: company.name,
+                summary: company.summary,
+                notes: company.notes,
+                tags: company.tags,
+                tagPool: self.tagPool,
+                photoInsights: insights,
+                preferredLinks: [company.website, company.linkedinURL],
+                context: context
+            )
+            self.enrichmentService.enrich(request, tagLanguage: tagLanguage, progress: { [weak self] stage in
+                self?.updateProgress(stage: stage)
+            }) { [weak self] result, errorCode in
+                guard let self else { return }
+                guard let result else {
+                    Task { @MainActor in
+                        self.finishEnrichmentProgress()
+                        completion?(false, errorCode ?? "failed")
+                    }
                     return
                 }
-                var updated = current
-                var enrichedFields: [String] = []
-                var backups: [String: String] = [:]
-                var didChange = false
-
-                func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
-                    guard !new.isEmpty, new != current else { return }
-                    enrichedFields.append(key)
-                    if !current.isEmpty {
-                        backups[key] = current
+                Task { @MainActor in
+                    guard let current = self.company(for: companyID) else {
+                        self.finishEnrichmentProgress()
+                        return
                     }
-                    assign(new)
-                    didChange = true
-                }
+                    var updated = current
+                    var enrichedFields: [String] = []
+                    var backups: [String: String] = [:]
+                    var didChange = false
 
-                func applyOptionalField(_ key: String, current: String?, new: String?, assign: (String) -> Void) {
-                    applyField(key, current: current ?? "", new: new ?? "", assign: assign)
-                }
-
-                if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
-                    updated.aiSummaryEN = result.summaryEN
-                    didChange = true
-                }
-                if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
-                    updated.aiSummaryZH = result.summaryZH
-                    didChange = true
-                }
-                if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
-                    updated.aiSummaryUpdatedAt = Date()
-                }
-                if !result.tags.isEmpty {
-                    let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
-                    let pool = self.tagPool
-                    let poolMap = Dictionary(uniqueKeysWithValues: pool.map { ($0.lowercased(), $0) })
-                    let normalizedTags = filteredTags.map { tag in
-                        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return "" }
-                        return poolMap[trimmed.lowercased()] ?? trimmed
-                    }.filter { !$0.isEmpty }
-                    let combinedTags = Array(Set(updated.tags + normalizedTags))
-                    if Set(combinedTags) != Set(updated.tags) {
-                        if !updated.tags.isEmpty {
-                            backups["tags"] = updated.tags.joined(separator: " · ")
+                    func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
+                        guard !new.isEmpty, new != current else { return }
+                        enrichedFields.append(key)
+                        if !current.isEmpty {
+                            backups[key] = current
                         }
-                        updated.tags = combinedTags
-                        enrichedFields.append("tags")
+                        assign(new)
                         didChange = true
                     }
-                }
-                applyField("website", current: updated.website, new: result.website ?? "") { updated.website = $0 }
-                applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
-                applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
-                applyField("address", current: updated.address, new: result.address ?? "") { updated.address = $0 }
-                applyOptionalField("industry", current: updated.industry, new: result.industry) { updated.industry = $0 }
-                applyOptionalField("companySize", current: updated.companySize, new: result.companySize) { updated.companySize = $0 }
-                applyOptionalField("revenue", current: updated.revenue, new: result.revenue) { updated.revenue = $0 }
-                applyOptionalField("foundedYear", current: updated.foundedYear, new: result.foundedYear) { updated.foundedYear = $0 }
-                applyOptionalField("headquarters", current: updated.headquarters, new: result.headquarters) { updated.headquarters = $0 }
 
-                if !didChange {
+                    func applyOptionalField(_ key: String, current: String?, new: String?, assign: (String) -> Void) {
+                        applyField(key, current: current ?? "", new: new ?? "", assign: assign)
+                    }
+
+                    if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
+                        updated.aiSummaryEN = result.summaryEN
+                        didChange = true
+                    }
+                    if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
+                        updated.aiSummaryZH = result.summaryZH
+                        didChange = true
+                    }
+                    if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
+                        updated.aiSummaryUpdatedAt = Date()
+                    }
+                    if !result.tags.isEmpty {
+                        let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
+                        let pool = self.tagPool
+                        let poolMap = Dictionary(uniqueKeysWithValues: pool.map { ($0.lowercased(), $0) })
+                        let normalizedTags = filteredTags.map { tag in
+                            let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty else { return "" }
+                            return poolMap[trimmed.lowercased()] ?? trimmed
+                        }.filter { !$0.isEmpty }
+                        let combinedTags = Array(Set(updated.tags + normalizedTags))
+                        if Set(combinedTags) != Set(updated.tags) {
+                            if !updated.tags.isEmpty {
+                                backups["tags"] = updated.tags.joined(separator: " · ")
+                            }
+                            updated.tags = combinedTags
+                            enrichedFields.append("tags")
+                            didChange = true
+                        }
+                    }
+                    applyField("website", current: updated.website, new: result.website ?? "") { updated.website = $0 }
+                    applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
+                    applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
+                    applyField("address", current: updated.address, new: result.address ?? "") { updated.address = $0 }
+                    applyOptionalField("industry", current: updated.industry, new: result.industry) { updated.industry = $0 }
+                    applyOptionalField("companySize", current: updated.companySize, new: result.companySize) { updated.companySize = $0 }
+                    applyOptionalField("revenue", current: updated.revenue, new: result.revenue) { updated.revenue = $0 }
+                    applyOptionalField("foundedYear", current: updated.foundedYear, new: result.foundedYear) { updated.foundedYear = $0 }
+                    applyOptionalField("headquarters", current: updated.headquarters, new: result.headquarters) { updated.headquarters = $0 }
+
+                    if !didChange {
+                        self.finishEnrichmentProgress()
+                        completion?(false, "no_changes")
+                        return
+                    }
+
+                    updated.lastEnrichedFields = enrichedFields
+                    updated.lastEnrichedValues = backups
+                    updated.enrichedAt = Date()
+                    self.updateCompany(updated)
                     self.finishEnrichmentProgress()
-                    completion?(false, "no_changes")
-                    return
+                    completion?(true, "")
                 }
-
-                updated.lastEnrichedFields = enrichedFields
-                updated.lastEnrichedValues = backups
-                updated.enrichedAt = Date()
-                self.updateCompany(updated)
-                self.finishEnrichmentProgress()
-                completion?(true, "")
             }
         }
     }
 
-    func enrichContact(contactID: UUID, completion: ((Bool, String) -> Void)? = nil) {
+    func enrichContact(
+        contactID: UUID,
+        tagLanguage: AppLanguage = .english,
+        completion: ((Bool, String) -> Void)? = nil
+    ) {
         guard let contact = contact(for: contactID) else { return }
         guard !isEnrichingGlobal else { return }
         guard enrichmentService.hasValidAPIKey() else {
@@ -527,6 +539,10 @@ final class AppState: ObservableObject {
         }
         startEnrichmentProgress()
         let contextParts: [String?] = [
+            contact.email,
+            contact.phone,
+            contact.website,
+            contact.linkedinURL,
             contact.title,
             contact.department,
             contact.location,
@@ -537,139 +553,387 @@ final class AppState: ObservableObject {
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: " | ")
-        let request = EnrichmentRequest(
-            type: .contact,
-            name: contact.name,
-            summary: contact.title,
-            notes: contact.notes,
-            tags: contact.tags,
-            tagPool: tagPool,
-            rawOCRText: "",
-            preferredLinks: [contact.website, contact.linkedinURL],
-            context: context
-        )
-        enrichmentService.enrich(request) { [weak self] result in
+        let photos = contact.photoIDs.compactMap { photoID in
+            loadContactPhoto(contactID: contactID, photoID: photoID)
+        }
+        enrichmentService.photoInsights(type: .contact, images: photos) { [weak self] insights in
             guard let self else { return }
-            guard let result else {
-                Task { @MainActor in
-                    self.finishEnrichmentProgress()
-                    completion?(false, "failed")
-                }
-                return
-            }
-            Task { @MainActor in
-                guard let current = self.contact(for: contactID) else {
-                    self.finishEnrichmentProgress()
+            self.updateProgress(stage: .searching(current: 1, total: 2))
+            let request = EnrichmentRequest(
+                type: .contact,
+                name: contact.name,
+                summary: contact.title,
+                notes: contact.notes,
+                tags: contact.tags,
+                tagPool: self.tagPool,
+                photoInsights: insights,
+                preferredLinks: [contact.website, contact.linkedinURL],
+                context: context
+            )
+            self.enrichmentService.enrich(request, tagLanguage: tagLanguage, progress: { [weak self] stage in
+                self?.updateProgress(stage: stage)
+            }) { [weak self] result, errorCode in
+                guard let self else { return }
+                guard let result else {
+                    Task { @MainActor in
+                        self.finishEnrichmentProgress()
+                        completion?(false, errorCode ?? "failed")
+                    }
                     return
                 }
-                var updated = current
-                var enrichedFields: [String] = []
-                var backups: [String: String] = [:]
-                var didChange = false
-
-                func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
-                    guard !new.isEmpty, new != current else { return }
-                    enrichedFields.append(key)
-                    if !current.isEmpty {
-                        backups[key] = current
+                Task { @MainActor in
+                    guard let current = self.contact(for: contactID) else {
+                        self.finishEnrichmentProgress()
+                        return
                     }
-                    assign(new)
-                    didChange = true
-                }
+                    var updated = current
+                    var enrichedFields: [String] = []
+                    var backups: [String: String] = [:]
+                    var didChange = false
 
-                func applyOptionalField(_ key: String, current: String?, new: String?, assign: (String) -> Void) {
-                    applyField(key, current: current ?? "", new: new ?? "", assign: assign)
-                }
-
-                if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
-                    updated.aiSummaryEN = result.summaryEN
-                    didChange = true
-                }
-                if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
-                    updated.aiSummaryZH = result.summaryZH
-                    didChange = true
-                }
-                if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
-                    updated.aiSummaryUpdatedAt = Date()
-                }
-                if !result.tags.isEmpty {
-                    let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
-                    let pool = self.tagPool
-                    let poolMap = Dictionary(uniqueKeysWithValues: pool.map { ($0.lowercased(), $0) })
-                    let normalizedTags = filteredTags.map { tag in
-                        let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return "" }
-                        return poolMap[trimmed.lowercased()] ?? trimmed
-                    }.filter { !$0.isEmpty }
-                    let combinedTags = Array(Set(updated.tags + normalizedTags))
-                    if Set(combinedTags) != Set(updated.tags) {
-                        if !updated.tags.isEmpty {
-                            backups["tags"] = updated.tags.joined(separator: " · ")
+                    func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
+                        guard !new.isEmpty, new != current else { return }
+                        enrichedFields.append(key)
+                        if !current.isEmpty {
+                            backups[key] = current
                         }
-                        updated.tags = combinedTags
-                        enrichedFields.append("tags")
+                        assign(new)
                         didChange = true
                     }
-                }
-                applyField("title", current: updated.title, new: result.title ?? "") { updated.title = $0 }
-                applyOptionalField("department", current: updated.department, new: result.department) { updated.department = $0 }
-                applyOptionalField("location", current: updated.location, new: result.location) { updated.location = $0 }
-                applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
-                applyField("email", current: updated.email, new: result.email ?? "") { updated.email = $0 }
-                applyOptionalField("website", current: updated.website, new: result.website) { updated.website = $0 }
-                applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
 
-                if !didChange {
+                    func applyOptionalField(_ key: String, current: String?, new: String?, assign: (String) -> Void) {
+                        applyField(key, current: current ?? "", new: new ?? "", assign: assign)
+                    }
+
+                    if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
+                        updated.aiSummaryEN = result.summaryEN
+                        didChange = true
+                    }
+                    if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
+                        updated.aiSummaryZH = result.summaryZH
+                        didChange = true
+                    }
+                    if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
+                        updated.aiSummaryUpdatedAt = Date()
+                    }
+                    if !result.tags.isEmpty {
+                        let filteredTags = result.tags.filter { !$0.contains(" ") && !$0.contains("\t") }
+                        let pool = self.tagPool
+                        let poolMap = Dictionary(uniqueKeysWithValues: pool.map { ($0.lowercased(), $0) })
+                        let normalizedTags = filteredTags.map { tag in
+                            let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !trimmed.isEmpty else { return "" }
+                            return poolMap[trimmed.lowercased()] ?? trimmed
+                        }.filter { !$0.isEmpty }
+                        let combinedTags = Array(Set(updated.tags + normalizedTags))
+                        if Set(combinedTags) != Set(updated.tags) {
+                            if !updated.tags.isEmpty {
+                                backups["tags"] = updated.tags.joined(separator: " · ")
+                            }
+                            updated.tags = combinedTags
+                            enrichedFields.append("tags")
+                            didChange = true
+                        }
+                    }
+                    applyField("title", current: updated.title, new: result.title ?? "") { updated.title = $0 }
+                    applyOptionalField("department", current: updated.department, new: result.department) { updated.department = $0 }
+                    applyOptionalField("location", current: updated.location, new: result.location) { updated.location = $0 }
+                    applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
+                    applyField("email", current: updated.email, new: result.email ?? "") { updated.email = $0 }
+                    applyOptionalField("website", current: updated.website, new: result.website) { updated.website = $0 }
+                    applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
+
+                    if !didChange {
+                        self.finishEnrichmentProgress()
+                        completion?(false, "no_changes")
+                        return
+                    }
+
+                    updated.lastEnrichedFields = enrichedFields
+                    updated.lastEnrichedValues = backups
+                    updated.enrichedAt = Date()
+                    self.updateContact(updated)
                     self.finishEnrichmentProgress()
-                    completion?(false, "no_changes")
-                    return
+                    completion?(true, "")
                 }
-
-                updated.lastEnrichedFields = enrichedFields
-                updated.lastEnrichedValues = backups
-                updated.enrichedAt = Date()
-                self.updateContact(updated)
-                self.finishEnrichmentProgress()
-                completion?(true, "")
             }
+        }
+    }
+
+    func ensureCompanyLocalization(companyID: UUID, targetLanguage: AppLanguage) {
+        guard let company = company(for: companyID) else { return }
+        guard translationService.hasValidAPIKey() else { return }
+        if company.sourceLanguageCode == targetLanguage.languageCode { return }
+
+        let signature = companyLocalizationSignature(company)
+        let currentSignature = targetLanguage == .english ? company.localizationSignatureEN : company.localizationSignatureZH
+        let needsTranslation = companyNeedsLocalization(company, language: targetLanguage, signature: signature)
+        guard currentSignature != signature || needsTranslation else { return }
+
+        let fields = companyFieldsForTranslation(company)
+        guard !fields.isEmpty else { return }
+
+        let request = TranslationRequest(fields: fields, targetLanguage: targetLanguage)
+        translationService.translate(request) { [weak self] result in
+            guard let self, let result else { return }
+            Task { @MainActor in
+                guard var updated = self.company(for: companyID) else { return }
+                self.applyCompanyLocalization(
+                    result,
+                    to: &updated,
+                    language: targetLanguage,
+                    signature: signature
+                )
+                self.updateCompany(updated)
+            }
+        }
+    }
+
+    func ensureContactLocalization(contactID: UUID, targetLanguage: AppLanguage) {
+        guard let contact = contact(for: contactID) else { return }
+        guard translationService.hasValidAPIKey() else { return }
+        if contact.sourceLanguageCode == targetLanguage.languageCode { return }
+
+        let signature = contactLocalizationSignature(contact)
+        let currentSignature = targetLanguage == .english ? contact.localizationSignatureEN : contact.localizationSignatureZH
+        let needsTranslation = contactNeedsLocalization(contact, language: targetLanguage, signature: signature)
+        guard currentSignature != signature || needsTranslation else { return }
+
+        let fields = contactFieldsForTranslation(contact)
+        guard !fields.isEmpty else { return }
+
+        let request = TranslationRequest(fields: fields, targetLanguage: targetLanguage)
+        translationService.translate(request) { [weak self] result in
+            guard let self, let result else { return }
+            Task { @MainActor in
+                guard var updated = self.contact(for: contactID) else { return }
+                self.applyContactLocalization(
+                    result,
+                    to: &updated,
+                    language: targetLanguage,
+                    signature: signature
+                )
+                self.updateContact(updated)
+            }
+        }
+    }
+
+    private func companyFieldsForTranslation(_ company: CompanyDocument) -> [String: String] {
+        var fields: [String: String] = [:]
+        let companyName = company.name.isEmpty ? (company.originalName ?? "") : company.name
+        if !companyName.isEmpty { fields["name"] = companyName }
+        if !company.summary.isEmpty { fields["summary"] = company.summary }
+        if let industry = company.industry, !industry.isEmpty { fields["industry"] = industry }
+        if !company.serviceType.isEmpty { fields["serviceType"] = company.serviceType }
+        if !company.marketRegion.isEmpty { fields["marketRegion"] = company.marketRegion }
+        let location = company.location.isEmpty ? (company.originalLocation ?? "") : company.location
+        if !location.isEmpty { fields["location"] = location }
+        if let headquarters = company.headquarters, !headquarters.isEmpty { fields["headquarters"] = headquarters }
+        if let companySize = company.companySize, !companySize.isEmpty { fields["companySize"] = companySize }
+        return fields
+    }
+
+    private func contactFieldsForTranslation(_ contact: ContactDocument) -> [String: String] {
+        var fields: [String: String] = [:]
+        let contactName = contact.name.isEmpty ? (contact.originalName ?? "") : contact.name
+        if !contactName.isEmpty { fields["name"] = contactName }
+        if !contact.title.isEmpty { fields["title"] = contact.title }
+        if let department = contact.department, !department.isEmpty { fields["department"] = department }
+        let location = (contact.location?.isEmpty == false) ? contact.location : contact.originalLocation
+        if let location, !location.isEmpty { fields["location"] = location }
+        let companyName = contact.companyName.isEmpty ? (contact.originalCompanyName ?? "") : contact.companyName
+        if !companyName.isEmpty { fields["companyName"] = companyName }
+        return fields
+    }
+
+    private func companyLocalizationSignature(_ company: CompanyDocument) -> String {
+        let companyName = company.name.isEmpty ? (company.originalName ?? "") : company.name
+        let location = company.location.isEmpty ? (company.originalLocation ?? "") : company.location
+        return [
+            companyName,
+            company.summary,
+            company.industry ?? "",
+            company.serviceType,
+            company.marketRegion,
+            location,
+            company.headquarters ?? "",
+            company.companySize ?? ""
+        ].joined(separator: "||")
+    }
+
+    private func contactLocalizationSignature(_ contact: ContactDocument) -> String {
+        let contactName = contact.name.isEmpty ? (contact.originalName ?? "") : contact.name
+        let location = (contact.location?.isEmpty == false) ? contact.location : contact.originalLocation
+        let companyName = contact.companyName.isEmpty ? (contact.originalCompanyName ?? "") : contact.companyName
+        return [
+            contactName,
+            contact.title,
+            contact.department ?? "",
+            location ?? "",
+            companyName
+        ].joined(separator: "||")
+    }
+
+    private func companyNeedsLocalization(_ company: CompanyDocument, language: AppLanguage, signature: String) -> Bool {
+        let fields = companyFieldsForTranslation(company)
+        for (key, value) in fields {
+            guard !value.isEmpty else { continue }
+            if localizedCompanyValue(for: company, key: key, language: language)?.isEmpty != false {
+                return true
+            }
+        }
+        let currentSignature = language == .english ? company.localizationSignatureEN : company.localizationSignatureZH
+        return currentSignature != signature
+    }
+
+    private func contactNeedsLocalization(_ contact: ContactDocument, language: AppLanguage, signature: String) -> Bool {
+        let fields = contactFieldsForTranslation(contact)
+        for (key, value) in fields {
+            guard !value.isEmpty else { continue }
+            if localizedContactValue(for: contact, key: key, language: language)?.isEmpty != false {
+                return true
+            }
+        }
+        let currentSignature = language == .english ? contact.localizationSignatureEN : contact.localizationSignatureZH
+        return currentSignature != signature
+    }
+
+    private func localizedCompanyValue(for company: CompanyDocument, key: String, language: AppLanguage) -> String? {
+        switch (key, language) {
+        case ("name", .english): return company.localizedNameEN
+        case ("name", .chinese): return company.localizedNameZH
+        case ("summary", .english): return company.localizedSummaryEN
+        case ("summary", .chinese): return company.localizedSummaryZH
+        case ("industry", .english): return company.localizedIndustryEN
+        case ("industry", .chinese): return company.localizedIndustryZH
+        case ("serviceType", .english): return company.localizedServiceTypeEN
+        case ("serviceType", .chinese): return company.localizedServiceTypeZH
+        case ("marketRegion", .english): return company.localizedMarketRegionEN
+        case ("marketRegion", .chinese): return company.localizedMarketRegionZH
+        case ("location", .english): return company.localizedLocationEN
+        case ("location", .chinese): return company.localizedLocationZH
+        case ("headquarters", .english): return company.localizedHeadquartersEN
+        case ("headquarters", .chinese): return company.localizedHeadquartersZH
+        case ("companySize", .english): return company.localizedCompanySizeEN
+        case ("companySize", .chinese): return company.localizedCompanySizeZH
+        default: return nil
+        }
+    }
+
+    private func localizedContactValue(for contact: ContactDocument, key: String, language: AppLanguage) -> String? {
+        switch (key, language) {
+        case ("name", .english): return contact.localizedNameEN
+        case ("name", .chinese): return contact.localizedNameZH
+        case ("title", .english): return contact.localizedTitleEN
+        case ("title", .chinese): return contact.localizedTitleZH
+        case ("department", .english): return contact.localizedDepartmentEN
+        case ("department", .chinese): return contact.localizedDepartmentZH
+        case ("location", .english): return contact.localizedLocationEN
+        case ("location", .chinese): return contact.localizedLocationZH
+        case ("companyName", .english): return contact.localizedCompanyNameEN
+        case ("companyName", .chinese): return contact.localizedCompanyNameZH
+        default: return nil
+        }
+    }
+
+    private func applyCompanyLocalization(
+        _ result: TranslationResult,
+        to company: inout CompanyDocument,
+        language: AppLanguage,
+        signature: String
+    ) {
+        let fields = result.fields
+        if let name = fields["name"], !name.isEmpty {
+            if language == .english { company.localizedNameEN = name } else { company.localizedNameZH = name }
+        }
+        if let summary = fields["summary"], !summary.isEmpty {
+            if language == .english { company.localizedSummaryEN = summary } else { company.localizedSummaryZH = summary }
+        }
+        if let industry = fields["industry"], !industry.isEmpty {
+            if language == .english { company.localizedIndustryEN = industry } else { company.localizedIndustryZH = industry }
+        }
+        if let serviceType = fields["serviceType"], !serviceType.isEmpty {
+            if language == .english { company.localizedServiceTypeEN = serviceType } else { company.localizedServiceTypeZH = serviceType }
+        }
+        if let marketRegion = fields["marketRegion"], !marketRegion.isEmpty {
+            if language == .english { company.localizedMarketRegionEN = marketRegion } else { company.localizedMarketRegionZH = marketRegion }
+        }
+        if let location = fields["location"], !location.isEmpty {
+            if language == .english { company.localizedLocationEN = location } else { company.localizedLocationZH = location }
+        }
+        if let headquarters = fields["headquarters"], !headquarters.isEmpty {
+            if language == .english { company.localizedHeadquartersEN = headquarters } else { company.localizedHeadquartersZH = headquarters }
+        }
+        if let companySize = fields["companySize"], !companySize.isEmpty {
+            if language == .english { company.localizedCompanySizeEN = companySize } else { company.localizedCompanySizeZH = companySize }
+        }
+        if language == .english {
+            company.localizationSignatureEN = signature
+        } else {
+            company.localizationSignatureZH = signature
+        }
+    }
+
+    private func applyContactLocalization(
+        _ result: TranslationResult,
+        to contact: inout ContactDocument,
+        language: AppLanguage,
+        signature: String
+    ) {
+        let fields = result.fields
+        if let name = fields["name"], !name.isEmpty {
+            if language == .english { contact.localizedNameEN = name } else { contact.localizedNameZH = name }
+        }
+        if let title = fields["title"], !title.isEmpty {
+            if language == .english { contact.localizedTitleEN = title } else { contact.localizedTitleZH = title }
+        }
+        if let department = fields["department"], !department.isEmpty {
+            if language == .english { contact.localizedDepartmentEN = department } else { contact.localizedDepartmentZH = department }
+        }
+        if let location = fields["location"], !location.isEmpty {
+            if language == .english { contact.localizedLocationEN = location } else { contact.localizedLocationZH = location }
+        }
+        if let companyName = fields["companyName"], !companyName.isEmpty {
+            if language == .english { contact.localizedCompanyNameEN = companyName } else { contact.localizedCompanyNameZH = companyName }
+        }
+        if language == .english {
+            contact.localizationSignatureEN = signature
+        } else {
+            contact.localizationSignatureZH = signature
         }
     }
 
     private func startEnrichmentProgress() {
-        progressTask?.cancel()
-        let totalStages = 5
-        let searchStages = max(1, totalStages - 2)
-        enrichmentProgress = EnrichmentProgressState(
-            stage: .analyzing,
-            progress: 1.0 / Double(totalStages),
-            totalStages: totalStages
-        )
-        progressTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            for index in 1...searchStages {
-                enrichmentProgress = EnrichmentProgressState(
-                    stage: .searching(current: index, total: searchStages),
-                    progress: Double(1 + index) / Double(totalStages),
-                    totalStages: totalStages
-                )
-                try? await Task.sleep(nanoseconds: 700_000_000)
-            }
-            enrichmentProgress = EnrichmentProgressState(
-                stage: .merging,
-                progress: Double(totalStages - 1) / Double(totalStages),
-                totalStages: totalStages
-            )
-        }
+        updateProgress(stage: .analyzing)
     }
 
     private func finishEnrichmentProgress() {
-        progressTask?.cancel()
-        progressTask = nil
-        enrichmentProgress = EnrichmentProgressState(stage: .complete, progress: 1.0, totalStages: 5)
+        enrichmentProgress = EnrichmentProgressState(stage: .complete, progress: 1.0, totalStages: 4)
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             enrichmentProgress = nil
         }
+    }
+
+    private func updateProgress(stage: EnrichmentStage) {
+        let totalStages = 4
+        let progress: Double
+        switch stage {
+        case .analyzing:
+            progress = 1.0 / Double(totalStages)
+        case .searching(let current, let total):
+            let clamped = max(1, min(current, max(1, total)))
+            progress = Double(1 + clamped) / Double(totalStages)
+        case .merging:
+            progress = Double(totalStages - 1) / Double(totalStages)
+        case .complete:
+            progress = 1.0
+        }
+        enrichmentProgress = EnrichmentProgressState(
+            stage: stage,
+            progress: progress,
+            totalStages: totalStages
+        )
     }
 
     private func companyName(for companyID: UUID) -> String? {

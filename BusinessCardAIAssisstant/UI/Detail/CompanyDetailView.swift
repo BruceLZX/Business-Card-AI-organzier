@@ -17,8 +17,13 @@ struct CompanyDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var pendingUnlinkContactID: UUID?
     @State private var showUnlinkConfirm = false
+    @State private var isSelectingContacts = false
+    @State private var selectedContactIDs: Set<UUID> = []
+    @State private var showBatchUnlinkConfirm = false
     @State private var showEnrichError = false
     @State private var enrichErrorMessage = ""
+    @State private var showPhotoViewer = false
+    @State private var selectedPhotoIndex = 0
 
     private enum Section {
         case profile
@@ -44,18 +49,44 @@ struct CompanyDetailView: View {
         return sourceLanguageCode != settings.language.languageCode
     }
 
+    private var displayLanguage: AppLanguage {
+        showOriginalName ? .chinese : .english
+    }
+
     private var displayName: String {
-        if showOriginalName, let originalName = draft.originalName, !originalName.isEmpty {
-            return originalName
-        }
-        return draft.name
+        draft.localizedName(for: displayLanguage)
     }
 
     private var displayLocation: String {
-        if showOriginalName, let original = draft.originalLocation, !original.isEmpty {
-            return original
-        }
-        return draft.location
+        draft.localizedLocation(for: displayLanguage)
+    }
+
+    private var displaySummary: String {
+        draft.localizedSummary(for: displayLanguage)
+    }
+
+    private var displayIndustry: String? {
+        draft.localizedIndustry(for: displayLanguage)
+    }
+
+    private var displayServiceType: String {
+        draft.localizedServiceType(for: displayLanguage)
+    }
+
+    private var displayMarketRegion: String {
+        draft.localizedMarketRegion(for: displayLanguage)
+    }
+
+    private var displayCompanySize: String? {
+        draft.localizedCompanySize(for: displayLanguage)
+    }
+
+    private var displayHeadquarters: String? {
+        draft.localizedHeadquarters(for: displayLanguage)
+    }
+
+    private var displayTags: [String] {
+        draft.localizedTags(for: displayLanguage)
     }
 
     private var locationBinding: Binding<String> {
@@ -81,10 +112,7 @@ struct CompanyDetailView: View {
     }
 
     private func displayContactName(for contact: ContactDocument) -> String {
-        if showOriginalName, let original = contact.originalName, !original.isEmpty {
-            return original
-        }
-        return contact.name
+        contact.localizedName(for: displayLanguage)
     }
 
     private var aiSummaryText: String {
@@ -120,11 +148,21 @@ struct CompanyDetailView: View {
                 draft = current
             }
             showOriginalName = settings.language == .chinese
+            appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: settings.language)
         }
         .onReceive(appState.$companies) { _ in
             if let current = appState.company(for: draft.id) {
                 draft = current
             }
+            appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: settings.language)
+        }
+        .onChange(of: settings.language) { _, newValue in
+            showOriginalName = newValue == .chinese
+            appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: newValue)
+        }
+        .onChange(of: showOriginalName) { _, newValue in
+            let language: AppLanguage = newValue ? .chinese : .english
+            appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: language)
         }
         .onDisappear {
             showOriginalName = settings.language == .chinese
@@ -186,10 +224,18 @@ struct CompanyDetailView: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $showPhotoViewer) {
+            CompanyPhotoViewer(
+                photoIDs: draft.photoIDs,
+                selectedIndex: $selectedPhotoIndex
+            ) { photoID in
+                appState.loadCompanyPhoto(companyID: draft.id, photoID: photoID)
+            }
+        }
         .alert(settings.text(.enrichConfirmTitle), isPresented: $showEnrichConfirm) {
             Button(settings.text(.enrichButton)) {
                 editingSection = nil
-                appState.enrichCompany(companyID: draft.id) { success, code in
+                appState.enrichCompany(companyID: draft.id, tagLanguage: settings.language) { success, code in
                     DispatchQueue.main.async {
                         if !success {
                             enrichErrorMessage = {
@@ -198,6 +244,12 @@ struct CompanyDetailView: View {
                                     return settings.text(.enrichNoChangesMessage)
                                 case "missing_api_key":
                                     return settings.text(.enrichMissingKeyMessage)
+                                case "network_error":
+                                    return settings.text(.enrichNetworkMessage)
+                                case "parse_failed":
+                                    return settings.text(.enrichParseMessage)
+                                case "empty_result":
+                                    return settings.text(.enrichEmptyResultMessage)
                                 default:
                                     return settings.text(.enrichFailedMessage)
                                 }
@@ -227,6 +279,23 @@ struct CompanyDetailView: View {
                 pendingUnlinkContactID = nil
             }
             Button(settings.text(.cancel), role: .cancel) {}
+        } message: {
+            Text(settings.text(.unlinkConfirmMessage))
+        }
+        .alert(settings.text(.unlinkConfirmTitle), isPresented: $showBatchUnlinkConfirm) {
+            Button(settings.text(.unlinkAction), role: .destructive) {
+                let ids = selectedContactIDs
+                ids.forEach { appState.unlinkContact($0, from: draft.id) }
+                if let current = appState.company(for: draft.id) {
+                    draft = current
+                }
+                selectedContactIDs.removeAll()
+                isSelectingContacts = false
+            }
+            Button(settings.text(.cancel), role: .cancel) {
+                selectedContactIDs.removeAll()
+                isSelectingContacts = false
+            }
         } message: {
             Text(settings.text(.unlinkConfirmMessage))
         }
@@ -261,11 +330,11 @@ struct CompanyDetailView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
-                    if !draft.summary.isEmpty {
-                        Text(draft.summary)
+                    if !displaySummary.isEmpty {
+                        Text(displaySummary)
                             .foregroundStyle(.secondary)
                     }
-                    if let industry = draft.industry, !industry.isEmpty {
+                    if let industry = displayIndustry, !industry.isEmpty {
                         Text(industry)
                             .foregroundStyle(isFieldHighlighted("industry") ? .blue : .secondary)
                     }
@@ -334,14 +403,14 @@ struct CompanyDetailView: View {
             } else {
                 InfoGridView(
                     rows: [
-                        InfoRow(key: "industry", label: settings.text(.industry), value: draft.industry),
-                        InfoRow(key: "companySize", label: settings.text(.companySize), value: draft.companySize),
+                        InfoRow(key: "industry", label: settings.text(.industry), value: displayIndustry),
+                        InfoRow(key: "companySize", label: settings.text(.companySize), value: displayCompanySize),
                         InfoRow(key: "revenue", label: settings.text(.revenue), value: draft.revenue),
                         InfoRow(key: "foundedYear", label: settings.text(.foundedYear), value: draft.foundedYear),
-                        InfoRow(key: "headquarters", label: settings.text(.headquarters), value: draft.headquarters),
-                        InfoRow(key: nil, label: settings.text(.serviceTypeLabel), value: draft.serviceType),
+                        InfoRow(key: "headquarters", label: settings.text(.headquarters), value: displayHeadquarters),
+                        InfoRow(key: nil, label: settings.text(.serviceTypeLabel), value: displayServiceType),
                         InfoRow(key: nil, label: settings.text(.location), value: displayLocation),
-                        InfoRow(key: nil, label: settings.text(.marketRegionLabel), value: draft.marketRegion),
+                        InfoRow(key: nil, label: settings.text(.marketRegionLabel), value: displayMarketRegion),
                         InfoRow(key: nil, label: settings.text(.targetAudience), value: draft.targetAudience.label(language: settings.language))
                     ],
                     isHighlighted: isFieldHighlighted,
@@ -492,54 +561,92 @@ struct CompanyDetailView: View {
                     Text(settings.text(.noRelatedContacts))
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(relatedContacts) { contact in
-                        NavigationLink {
-                            ContactDetailView(contact: contact)
-                        } label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(displayContactName(for: contact))
-                                        .font(.headline)
-                                    Text(contact.title)
-                                        .foregroundStyle(.secondary)
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(spacing: 10) {
+                            ForEach(relatedContacts) { contact in
+                                if isSelectingContacts {
+                                    Button {
+                                        toggleSelection(contactID: contact.id)
+                                    } label: {
+                                        contactRow(
+                                            contact,
+                                            showsChevron: false,
+                                            showsSelection: true,
+                                            isSelected: selectedContactIDs.contains(contact.id)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    NavigationLink {
+                                        ContactDetailView(contact: contact)
+                                    } label: {
+                                        contactRow(
+                                            contact,
+                                            showsChevron: true,
+                                            showsSelection: false,
+                                            isSelected: false
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .contentShape(Rectangle())
+                                    .highPriorityGesture(
+                                        LongPressGesture(minimumDuration: 0.6).onEnded { _ in
+                                            guard !isEnriching else { return }
+                                            pendingUnlinkContactID = contact.id
+                                            showUnlinkConfirm = true
+                                        }
+                                    )
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            guard !isEnriching else { return }
+                                            pendingUnlinkContactID = contact.id
+                                            showUnlinkConfirm = true
+                                        } label: {
+                                            Label(settings.text(.unlinkAction), systemImage: "link.badge.xmark")
+                                        }
+                                    }
                                 }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
                             }
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color(.systemBackground))
-                            )
                         }
-                        .buttonStyle(.plain)
-                        .contentShape(Rectangle())
-                        .highPriorityGesture(
-                            LongPressGesture(minimumDuration: 0.6).onEnded { _ in
-                                guard !isEnriching else { return }
-                                pendingUnlinkContactID = contact.id
-                                showUnlinkConfirm = true
-                            }
-                        )
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                guard !isEnriching else { return }
-                                pendingUnlinkContactID = contact.id
-                                showUnlinkConfirm = true
-                            } label: {
-                                Label(settings.text(.unlinkAction), systemImage: "link.badge.xmark")
-                            }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(height: 240)
+                }
+
+                HStack(spacing: 10) {
+                    if isSelectingContacts {
+                        ActionCardButton(
+                            title: settings.text(.cancel),
+                            systemImage: "xmark",
+                            role: nil
+                        ) {
+                            selectedContactIDs.removeAll()
+                            isSelectingContacts = false
+                        }
+                    } else {
+                        ActionCardButton(
+                            title: settings.text(.linkNewContact),
+                            systemImage: "plus"
+                        ) {
+                            showLinkContactPicker = true
                         }
                     }
+
+                    ActionCardButton(
+                        title: settings.text(.unlinkAction),
+                        systemImage: "link.badge.xmark",
+                        role: .destructive
+                    ) {
+                        if isSelectingContacts {
+                            if !selectedContactIDs.isEmpty {
+                                showBatchUnlinkConfirm = true
+                            }
+                        } else {
+                            isSelectingContacts = true
+                        }
+                    }
+                    .disabled(isEnriching || (isSelectingContacts && selectedContactIDs.isEmpty))
                 }
-                Button(settings.text(.linkNewContact)) {
-                    showLinkContactPicker = true
-                }
-                .buttonStyle(.bordered)
-                .foregroundStyle(.blue)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(isEnriching)
             }
         }
     }
@@ -559,12 +666,12 @@ struct CompanyDetailView: View {
             HStack {
                 Spacer()
                 Button {
-                    guard draft.photoIDs.count < 10 else { return }
+                    guard draft.photoIDs.count < 20 else { return }
                     showPhotoSourceSheet = true
                 } label: {
                     Label(settings.text(.addPhoto), systemImage: "camera")
                 }
-                .disabled(draft.photoIDs.count >= 10)
+                .disabled(draft.photoIDs.count >= 20)
                 .disabled(isEnriching)
             }
 
@@ -572,27 +679,37 @@ struct CompanyDetailView: View {
                 Text(settings.text(.noPhotos))
                     .foregroundStyle(.secondary)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(draft.photoIDs, id: \.self) { photoID in
+                let columns = [GridItem(.flexible()), GridItem(.flexible())]
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(Array(draft.photoIDs.enumerated()), id: \.element) { index, photoID in
                             if let image = appState.loadCompanyPhoto(companyID: draft.id, photoID: photoID) {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 180, height: 120)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                                    .contextMenu {
-                                        Button(role: .destructive) {
-                                            appState.deleteCompanyPhoto(companyID: draft.id, photoID: photoID)
-                                            draft.photoIDs.removeAll { $0 == photoID }
-                                        } label: {
-                                            Label(settings.text(.deleteDocument), systemImage: "trash")
-                                        }
+                                Button {
+                                    selectedPhotoIndex = index
+                                    showPhotoViewer = true
+                                } label: {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(height: 120)
+                                        .frame(maxWidth: .infinity)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        appState.deleteCompanyPhoto(companyID: draft.id, photoID: photoID)
+                                        draft.photoIDs.removeAll { $0 == photoID }
+                                    } label: {
+                                        Label(settings.text(.deleteDocument), systemImage: "trash")
                                     }
+                                }
                             }
                         }
                     }
+                    .padding(.vertical, 4)
                 }
+                .frame(height: 260)
             }
         }
     }
@@ -639,6 +756,7 @@ struct CompanyDetailView: View {
 
     private func saveSection() {
         appState.updateCompany(draft)
+        appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: settings.language)
         editingSection = nil
     }
 
@@ -651,6 +769,44 @@ struct CompanyDetailView: View {
 
     private func linkContact(_ contact: ContactDocument) {
         appState.linkContact(contact.id, to: draft.id)
+    }
+
+    private func toggleSelection(contactID: UUID) {
+        if selectedContactIDs.contains(contactID) {
+            selectedContactIDs.remove(contactID)
+        } else {
+            selectedContactIDs.insert(contactID)
+        }
+    }
+
+    @ViewBuilder
+    private func contactRow(
+        _ contact: ContactDocument,
+        showsChevron: Bool,
+        showsSelection: Bool,
+        isSelected: Bool
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(displayContactName(for: contact))
+                    .font(.headline)
+                Text(contact.localizedTitle(for: displayLanguage))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if showsSelection {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? .blue : .secondary)
+            } else if showsChevron {
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.systemBackground))
+        )
     }
 
     private var languageToggle: some View {
@@ -935,6 +1091,73 @@ private struct UndoButton: View {
     }
 }
 
+private struct ActionCardButton: View {
+    let title: String
+    let systemImage: String
+    let role: ButtonRole?
+    let action: () -> Void
+
+    init(title: String, systemImage: String, role: ButtonRole? = nil, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.role = role
+        self.action = action
+    }
+
+    var body: some View {
+        Button(role: role, action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                Text(title)
+                    .font(.headline)
+                Spacer()
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.systemBackground))
+            )
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(role == .destructive ? .red : .primary)
+    }
+}
+
+private struct CompanyPhotoViewer: View {
+    let photoIDs: [UUID]
+    @Binding var selectedIndex: Int
+    let loadImage: (UUID) -> UIImage?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            TabView(selection: $selectedIndex) {
+                ForEach(Array(photoIDs.enumerated()), id: \.element) { index, photoID in
+                    if let image = loadImage(photoID) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .tag(index)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .automatic))
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(16)
+            }
+        }
+    }
+}
+
 private struct UncertainBadge: View {
     var body: some View {
         Text("可能不准确")
@@ -1000,12 +1223,21 @@ private struct InfoGridView: View {
 
 private extension CompanyDocument {
     var websiteURL: URL? {
-        URL(string: website)
+        normalizedURL(from: website)
     }
 
     var linkedinURLValue: URL? {
         guard let linkedinURL, !linkedinURL.isEmpty else { return nil }
-        return URL(string: linkedinURL)
+        return normalizedURL(from: linkedinURL)
+    }
+
+    private func normalizedURL(from raw: String) -> URL? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+            return URL(string: trimmed)
+        }
+        return URL(string: "https://\(trimmed)")
     }
 }
 

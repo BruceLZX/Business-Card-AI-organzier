@@ -29,22 +29,9 @@
 		9B8C2F832F143C3800FDBF02 /* BusinessCardAIAssisstantUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BusinessCardAIAssisstantUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		9B38D2682F1F696E00F0FEE7 /* Exceptions for "BusinessCardAIAssisstant" folder in "BusinessCardAIAssisstant" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Secrets.xcconfig,
-			);
-			target = 9B8C2F6B2F143C3700FDBF02 /* BusinessCardAIAssisstant */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		9B8C2F6E2F143C3700FDBF02 /* BusinessCardAIAssisstant */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				9B38D2682F1F696E00F0FEE7 /* Exceptions for "BusinessCardAIAssisstant" folder in "BusinessCardAIAssisstant" target */,
-			);
 			path = BusinessCardAIAssisstant;
 			sourceTree = "<group>";
 		};

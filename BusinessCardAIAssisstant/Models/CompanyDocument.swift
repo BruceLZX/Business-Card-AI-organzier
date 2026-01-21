@@ -28,6 +28,26 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
     var aiSummaryUpdatedAt: Date?
     var lastEnrichedFields: [String] = []
     var lastEnrichedValues: [String: String] = [:]
+    var localizedNameEN: String?
+    var localizedNameZH: String?
+    var localizedSummaryEN: String?
+    var localizedSummaryZH: String?
+    var localizedIndustryEN: String?
+    var localizedIndustryZH: String?
+    var localizedServiceTypeEN: String?
+    var localizedServiceTypeZH: String?
+    var localizedMarketRegionEN: String?
+    var localizedMarketRegionZH: String?
+    var localizedLocationEN: String?
+    var localizedLocationZH: String?
+    var localizedHeadquartersEN: String?
+    var localizedHeadquartersZH: String?
+    var localizedCompanySizeEN: String?
+    var localizedCompanySizeZH: String?
+    var localizedTagsEN: [String]?
+    var localizedTagsZH: [String]?
+    var localizationSignatureEN: String?
+    var localizationSignatureZH: String?
     var photoIDs: [UUID]
     var sourceLanguageCode: String?
     var enrichedAt: Date?
