@@ -1,6 +1,7 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/BruceLZX/Business-Card-AI-organzier/main/BusinessCardAIAssistant/Assets.xcassets/AppIcon.appiconset/AppIcon.png" width="120" height="120" alt="BusinessCardAIAssistant Logo" />
+<img src="https://github.com/BruceLZX/Business-Card-AI-organzier/blob/main/BusinessCardAIAssistant/Assets.xcassets/AppIcon.appiconset/AppIcon.png?raw=1" width="120" height="120" alt="BusinessCardAIAssistant Logo" />
+
 
 
 # BusinessCardAIAssistant
