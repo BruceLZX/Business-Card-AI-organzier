@@ -579,7 +579,7 @@ struct CompanyDetailView: View {
                                             pendingUnlinkContactID = contact.id
                                             showUnlinkConfirm = true
                                         } label: {
-                                            Label(settings.text(.unlinkAction), systemImage: "link.badge.minus")
+                                            Label(settings.text(.unlinkAction), systemImage: "link.slash")
                                         }
                                     }
                                 }
@@ -611,7 +611,7 @@ struct CompanyDetailView: View {
 
                     ActionCardButton(
                         title: settings.text(.unlinkAction),
-                        systemImage: "link.badge.minus",
+                        systemImage: "link.slash",
                         role: .destructive
                     ) {
                         if isSelectingContacts {

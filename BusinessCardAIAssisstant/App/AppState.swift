@@ -564,7 +564,7 @@ final class AppState: ObservableObject {
                     applyOptionalField("serviceType", current: updated.serviceType, new: result.serviceType) { updated.serviceType = $0 }
                     applyOptionalField("marketRegion", current: updated.marketRegion, new: result.marketRegion) { updated.marketRegion = $0 }
                     applyOptionalField("companySize", current: updated.companySize, new: result.companySize) { updated.companySize = $0 }
-                    if shouldAcceptRevenue(result.revenue) {
+                    if self.shouldAcceptRevenue(result.revenue) {
                         applyOptionalField("revenue", current: updated.revenue, new: result.revenue) { updated.revenue = $0 }
                     }
                     applyOptionalField("foundedYear", current: updated.foundedYear, new: result.foundedYear) { updated.foundedYear = $0 }

@@ -53,6 +53,112 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
     var enrichedAt: Date?
     var createdAt: Date?
 
+    init(
+        id: UUID,
+        name: String,
+        originalName: String?,
+        summary: String,
+        serviceKeywords: [String],
+        website: String,
+        linkedinURL: String?,
+        industry: String?,
+        companySize: String?,
+        revenue: String?,
+        foundedYear: String?,
+        headquarters: String?,
+        address: String,
+        phone: String,
+        location: String,
+        originalLocation: String?,
+        serviceType: String,
+        targetAudience: String,
+        marketRegion: String,
+        notes: String,
+        tags: [String],
+        relatedContactIDs: [UUID],
+        aiSummaryEN: String = "",
+        aiSummaryZH: String = "",
+        aiSummaryUpdatedAt: Date? = nil,
+        lastEnrichedFields: [String] = [],
+        lastEnrichedValues: [String: String] = [:],
+        localizedNameEN: String? = nil,
+        localizedNameZH: String? = nil,
+        localizedSummaryEN: String? = nil,
+        localizedSummaryZH: String? = nil,
+        localizedIndustryEN: String? = nil,
+        localizedIndustryZH: String? = nil,
+        localizedServiceTypeEN: String? = nil,
+        localizedServiceTypeZH: String? = nil,
+        localizedMarketRegionEN: String? = nil,
+        localizedMarketRegionZH: String? = nil,
+        localizedLocationEN: String? = nil,
+        localizedLocationZH: String? = nil,
+        localizedHeadquartersEN: String? = nil,
+        localizedHeadquartersZH: String? = nil,
+        localizedCompanySizeEN: String? = nil,
+        localizedCompanySizeZH: String? = nil,
+        localizedTagsEN: [String]? = nil,
+        localizedTagsZH: [String]? = nil,
+        localizationSignatureEN: String? = nil,
+        localizationSignatureZH: String? = nil,
+        photoIDs: [UUID],
+        sourceLanguageCode: String?,
+        enrichedAt: Date?,
+        createdAt: Date?
+    ) {
+        self.id = id
+        self.name = name
+        self.originalName = originalName
+        self.summary = summary
+        self.serviceKeywords = serviceKeywords
+        self.website = website
+        self.linkedinURL = linkedinURL
+        self.industry = industry
+        self.companySize = companySize
+        self.revenue = revenue
+        self.foundedYear = foundedYear
+        self.headquarters = headquarters
+        self.address = address
+        self.phone = phone
+        self.location = location
+        self.originalLocation = originalLocation
+        self.serviceType = serviceType
+        self.targetAudience = targetAudience
+        self.marketRegion = marketRegion
+        self.notes = notes
+        self.tags = tags
+        self.relatedContactIDs = relatedContactIDs
+        self.aiSummaryEN = aiSummaryEN
+        self.aiSummaryZH = aiSummaryZH
+        self.aiSummaryUpdatedAt = aiSummaryUpdatedAt
+        self.lastEnrichedFields = lastEnrichedFields
+        self.lastEnrichedValues = lastEnrichedValues
+        self.localizedNameEN = localizedNameEN
+        self.localizedNameZH = localizedNameZH
+        self.localizedSummaryEN = localizedSummaryEN
+        self.localizedSummaryZH = localizedSummaryZH
+        self.localizedIndustryEN = localizedIndustryEN
+        self.localizedIndustryZH = localizedIndustryZH
+        self.localizedServiceTypeEN = localizedServiceTypeEN
+        self.localizedServiceTypeZH = localizedServiceTypeZH
+        self.localizedMarketRegionEN = localizedMarketRegionEN
+        self.localizedMarketRegionZH = localizedMarketRegionZH
+        self.localizedLocationEN = localizedLocationEN
+        self.localizedLocationZH = localizedLocationZH
+        self.localizedHeadquartersEN = localizedHeadquartersEN
+        self.localizedHeadquartersZH = localizedHeadquartersZH
+        self.localizedCompanySizeEN = localizedCompanySizeEN
+        self.localizedCompanySizeZH = localizedCompanySizeZH
+        self.localizedTagsEN = localizedTagsEN
+        self.localizedTagsZH = localizedTagsZH
+        self.localizationSignatureEN = localizationSignatureEN
+        self.localizationSignatureZH = localizationSignatureZH
+        self.photoIDs = photoIDs
+        self.sourceLanguageCode = sourceLanguageCode
+        self.enrichedAt = enrichedAt
+        self.createdAt = createdAt
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case name

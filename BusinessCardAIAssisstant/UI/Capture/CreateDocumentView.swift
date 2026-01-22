@@ -1273,7 +1273,7 @@ struct CreateDocumentView: View {
 
     private func applyNamePrefill(
         primary: inout String,
-        secondary: inout String?,
+        secondary: inout String,
         nameEN: String,
         nameZH: String
     ) {
@@ -1282,7 +1282,7 @@ struct CreateDocumentView: View {
         guard !en.isEmpty || !zh.isEmpty else { return }
 
         let primaryTrimmed = primary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let secondaryTrimmed = (secondary ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let secondaryTrimmed = secondary.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if !primaryTrimmed.isEmpty {
             if secondaryTrimmed.isEmpty {
