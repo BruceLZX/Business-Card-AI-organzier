@@ -13,7 +13,7 @@ struct CompanyDetailView: View {
     @State private var photoSourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var showEnrichConfirm = false
     @State private var showLinkContactPicker = false
-    @State private var showOriginalName = false
+    @State private var displayLanguage: AppLanguage = .english
     @State private var showDeleteConfirm = false
     @State private var pendingUnlinkContactID: UUID?
     @State private var showUnlinkConfirm = false
@@ -39,18 +39,6 @@ struct CompanyDetailView: View {
 
     private var relatedContacts: [ContactDocument] {
         appState.contacts.filter { draft.relatedContactIDs.contains($0.id) }
-    }
-
-    private var shouldShowOriginalName: Bool {
-        if let originalName = draft.originalName, !originalName.isEmpty {
-            return true
-        }
-        guard let sourceLanguageCode = draft.sourceLanguageCode else { return false }
-        return sourceLanguageCode != settings.language.languageCode
-    }
-
-    private var displayLanguage: AppLanguage {
-        showOriginalName ? .chinese : .english
     }
 
     private var displayName: String {
@@ -92,13 +80,13 @@ struct CompanyDetailView: View {
     private var locationBinding: Binding<String> {
         Binding(
             get: {
-                if showOriginalName {
+                if displayLanguage == .chinese {
                     return draft.originalLocation ?? ""
                 }
                 return draft.location
             },
             set: { newValue in
-                if showOriginalName {
+                if displayLanguage == .chinese {
                     draft.originalLocation = newValue
                 } else {
                     draft.location = newValue
@@ -116,7 +104,7 @@ struct CompanyDetailView: View {
     }
 
     private var aiSummaryText: String {
-        if showOriginalName {
+        if displayLanguage == .chinese {
             return !draft.aiSummaryZH.isEmpty ? draft.aiSummaryZH : draft.aiSummaryEN
         }
         return !draft.aiSummaryEN.isEmpty ? draft.aiSummaryEN : draft.aiSummaryZH
@@ -142,12 +130,11 @@ struct CompanyDetailView: View {
             .padding(.vertical, 16)
         }
         .navigationTitle(settings.text(.company))
-        .navigationBarBackButtonHidden(isEnriching)
         .onAppear {
             if let current = appState.company(for: draft.id) {
                 draft = current
             }
-            showOriginalName = settings.language == .chinese
+            displayLanguage = settings.language
             appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: settings.language)
         }
         .onReceive(appState.$companies) { _ in
@@ -157,15 +144,14 @@ struct CompanyDetailView: View {
             appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: settings.language)
         }
         .onChange(of: settings.language) { _, newValue in
-            showOriginalName = newValue == .chinese
+            displayLanguage = newValue
             appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: newValue)
         }
-        .onChange(of: showOriginalName) { _, newValue in
-            let language: AppLanguage = newValue ? .chinese : .english
-            appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: language)
+        .onChange(of: displayLanguage) { _, newValue in
+            appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: newValue)
         }
         .onDisappear {
-            showOriginalName = settings.language == .chinese
+            clearAllHighlightsIfNeeded()
         }
         .sheet(isPresented: $isPresentingCamera) {
             CameraView { image in
@@ -314,19 +300,15 @@ struct CompanyDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .profile {
-                TextField(settings.text(.name), text: $draft.name)
-                if shouldShowOriginalName {
-                    TextField(settings.text(.originalName), text: binding(for: $draft.originalName))
-                }
-                TextField(settings.text(.summary), text: $draft.summary, axis: .vertical)
+                styledTextField(settings.text(.name), text: $draft.name)
+                styledTextField(settings.text(.originalName), text: binding(for: $draft.originalName))
+                styledTextField(settings.text(.summary), text: $draft.summary, axis: .vertical)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(displayName.isEmpty ? "—" : displayName)
                         .font(.title2.bold())
-                    if let originalName = draft.originalName,
-                       !originalName.isEmpty,
-                       originalName != draft.name {
-                        Text("\(settings.text(.originalName)): \(originalName)")
+                    if let secondaryName = draft.secondaryName(for: displayLanguage), !secondaryName.isEmpty {
+                        Text(secondaryName)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -386,20 +368,15 @@ struct CompanyDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .details {
-                TextField(settings.text(.industry), text: binding(for: $draft.industry))
-                TextField(settings.text(.companySize), text: binding(for: $draft.companySize))
-                TextField(settings.text(.revenue), text: binding(for: $draft.revenue))
-                TextField(settings.text(.foundedYear), text: binding(for: $draft.foundedYear))
-                TextField(settings.text(.headquarters), text: binding(for: $draft.headquarters))
-                TextField(settings.text(.serviceTypeLabel), text: $draft.serviceType)
-                TextField(settings.text(.location), text: locationBinding)
-                TextField(settings.text(.marketRegionLabel), text: $draft.marketRegion)
-                Picker(settings.text(.targetAudience), selection: $draft.targetAudience) {
-                    ForEach(TargetAudience.allCases) { option in
-                        Text(option.label(language: settings.language)).tag(option)
-                    }
-                }
-                .pickerStyle(.segmented)
+                styledTextField(settings.text(.industry), text: binding(for: $draft.industry))
+                styledTextField(settings.text(.companySize), text: binding(for: $draft.companySize))
+                styledTextField(settings.text(.revenue), text: binding(for: $draft.revenue))
+                styledTextField(settings.text(.foundedYear), text: binding(for: $draft.foundedYear))
+                styledTextField(settings.text(.headquarters), text: binding(for: $draft.headquarters))
+                styledTextField(settings.text(.serviceTypeLabel), text: $draft.serviceType)
+                styledTextField(settings.text(.location), text: locationBinding)
+                styledTextField(settings.text(.marketRegionLabel), text: $draft.marketRegion)
+                styledTextField(settings.text(.targetAudience), text: $draft.targetAudience)
             } else {
                 InfoGridView(
                     rows: [
@@ -408,10 +385,10 @@ struct CompanyDetailView: View {
                         InfoRow(key: "revenue", label: settings.text(.revenue), value: draft.revenue),
                         InfoRow(key: "foundedYear", label: settings.text(.foundedYear), value: draft.foundedYear),
                         InfoRow(key: "headquarters", label: settings.text(.headquarters), value: displayHeadquarters),
-                        InfoRow(key: nil, label: settings.text(.serviceTypeLabel), value: displayServiceType),
+                        InfoRow(key: "serviceType", label: settings.text(.serviceTypeLabel), value: displayServiceType),
                         InfoRow(key: nil, label: settings.text(.location), value: displayLocation),
-                        InfoRow(key: nil, label: settings.text(.marketRegionLabel), value: displayMarketRegion),
-                        InfoRow(key: nil, label: settings.text(.targetAudience), value: draft.targetAudience.label(language: settings.language))
+                        InfoRow(key: "marketRegion", label: settings.text(.marketRegionLabel), value: displayMarketRegion),
+                        InfoRow(key: nil, label: settings.text(.targetAudience), value: draft.targetAudience)
                     ],
                     isHighlighted: isFieldHighlighted,
                     undoLabel: { undoLabel(for: $0) },
@@ -436,10 +413,10 @@ struct CompanyDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .links {
-                TextField(settings.text(.website), text: $draft.website)
-                TextField(settings.text(.linkedin), text: binding(for: $draft.linkedinURL))
-                TextField(settings.text(.phone), text: $draft.phone)
-                TextField(settings.text(.address), text: $draft.address)
+                styledTextField(settings.text(.website), text: $draft.website)
+                styledTextField(settings.text(.linkedin), text: binding(for: $draft.linkedinURL))
+                styledTextField(settings.text(.phone), text: $draft.phone)
+                styledTextField(settings.text(.address), text: $draft.address)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     if let url = draft.websiteURL {
@@ -602,7 +579,7 @@ struct CompanyDetailView: View {
                                             pendingUnlinkContactID = contact.id
                                             showUnlinkConfirm = true
                                         } label: {
-                                            Label(settings.text(.unlinkAction), systemImage: "link.badge.xmark")
+                                            Label(settings.text(.unlinkAction), systemImage: "link.badge.minus")
                                         }
                                     }
                                 }
@@ -610,7 +587,7 @@ struct CompanyDetailView: View {
                         }
                         .padding(.vertical, 4)
                     }
-                    .frame(height: 240)
+                    .frame(height: relatedListHeight(count: relatedContacts.count))
                 }
 
                 HStack(spacing: 10) {
@@ -634,7 +611,7 @@ struct CompanyDetailView: View {
 
                     ActionCardButton(
                         title: settings.text(.unlinkAction),
-                        systemImage: "link.badge.xmark",
+                        systemImage: "link.badge.minus",
                         role: .destructive
                     ) {
                         if isSelectingContacts {
@@ -649,6 +626,14 @@ struct CompanyDetailView: View {
                 }
             }
         }
+    }
+
+    private func relatedListHeight(count: Int) -> CGFloat {
+        let rowHeight: CGFloat = 72
+        let spacing: CGFloat = 10
+        let maxRows = 3
+        let rows = min(max(count, 1), maxRows)
+        return CGFloat(rows) * rowHeight + CGFloat(max(0, rows - 1)) * spacing + 8
     }
 
     private var photosSection: some View {
@@ -709,9 +694,18 @@ struct CompanyDetailView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .frame(height: 260)
+                .frame(height: photoGridHeight(count: draft.photoIDs.count))
             }
         }
+    }
+
+    private func photoGridHeight(count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        let rowHeight: CGFloat = 120
+        let spacing: CGFloat = 12
+        let maxRows = 2
+        let rows = min(Int(ceil(Double(count) / 2.0)), maxRows)
+        return CGFloat(rows) * rowHeight + CGFloat(max(0, rows - 1)) * spacing + 8
     }
 
     private var notesSection: some View {
@@ -727,7 +721,7 @@ struct CompanyDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .notes {
-                TextField(settings.text(.notes), text: $draft.notes, axis: .vertical)
+                styledTextField(settings.text(.notes), text: $draft.notes, axis: .vertical)
             } else {
                 Text(draft.notes.isEmpty ? "—" : draft.notes)
                     .foregroundStyle(.secondary)
@@ -755,6 +749,7 @@ struct CompanyDetailView: View {
     }
 
     private func saveSection() {
+        clearHighlightsForEditedSection()
         appState.updateCompany(draft)
         appState.ensureCompanyLocalization(companyID: draft.id, targetLanguage: settings.language)
         editingSection = nil
@@ -777,6 +772,39 @@ struct CompanyDetailView: View {
         } else {
             selectedContactIDs.insert(contactID)
         }
+    }
+
+    private func clearHighlightsForEditedSection() {
+        guard let section = editingSection else { return }
+        let keys: [String]
+        switch section {
+        case .profile:
+            keys = []
+        case .details:
+            keys = ["industry", "companySize", "revenue", "foundedYear", "headquarters", "serviceType", "marketRegion"]
+        case .links:
+            keys = ["website", "linkedin", "phone", "address"]
+        case .tags:
+            keys = ["tags"]
+        case .notes:
+            keys = []
+        }
+        clearHighlights(keys)
+    }
+
+    private func clearHighlights(_ keys: [String]) {
+        guard !keys.isEmpty else { return }
+        keys.forEach { key in
+            draft.lastEnrichedFields.removeAll { $0 == key }
+            draft.lastEnrichedValues.removeValue(forKey: key)
+        }
+    }
+
+    private func clearAllHighlightsIfNeeded() {
+        guard !draft.lastEnrichedFields.isEmpty else { return }
+        draft.lastEnrichedFields.removeAll()
+        draft.lastEnrichedValues.removeAll()
+        appState.updateCompany(draft)
     }
 
     @ViewBuilder
@@ -810,13 +838,27 @@ struct CompanyDetailView: View {
     }
 
     private var languageToggle: some View {
-        Picker("", selection: $showOriginalName) {
-            Text("EN").tag(false)
-            Text("中文").tag(true)
+        Picker("", selection: $displayLanguage) {
+            Text("EN").tag(AppLanguage.english)
+            Text("中文").tag(AppLanguage.chinese)
         }
         .pickerStyle(.segmented)
         .frame(maxWidth: 140)
         .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private func styledTextField(_ title: String, text: Binding<String>, axis: Axis = .horizontal) -> some View {
+        TextField(title, text: text, axis: axis)
+            .textFieldStyle(.plain)
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(.separator).opacity(0.6), lineWidth: 1)
+            )
     }
 
     private func binding(for value: Binding<String?>) -> Binding<String> {
@@ -920,6 +962,10 @@ struct CompanyDetailView: View {
             draft.foundedYear = previous
         case "headquarters":
             draft.headquarters = previous
+        case "serviceType":
+            draft.serviceType = previous
+        case "marketRegion":
+            draft.marketRegion = previous
         case "tags":
             let restored = previous.split(separator: "·").map {
                 $0.trimmingCharacters(in: .whitespacesAndNewlines)

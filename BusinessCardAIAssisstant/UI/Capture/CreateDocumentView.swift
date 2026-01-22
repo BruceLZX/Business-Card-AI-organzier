@@ -136,6 +136,7 @@ struct CreateDocumentView: View {
     @State private var companyLocation = ""
     @State private var companyOriginalLocation = ""
     @State private var companyMarketRegion = ""
+    @State private var companyTargetAudience = ""
     @State private var companyWebsite = ""
     @State private var companyLinkedin = ""
     @State private var companyPhone = ""
@@ -458,7 +459,7 @@ struct CreateDocumentView: View {
             location: resolvedLocation,
             originalLocation: companyOriginalLocation.isEmpty ? nil : companyOriginalLocation,
             serviceType: companyServiceType,
-            targetAudience: .b2b,
+            targetAudience: companyTargetAudience,
             marketRegion: companyMarketRegion,
             notes: companyNotes,
             tags: companyTags,
@@ -474,6 +475,7 @@ struct CreateDocumentView: View {
                 _ = appState.addCompanyPhoto(companyID: company.id, image: image)
             }
         }
+        triggerCompanyTagGeneration(companyID: company.id)
         return company.id
     }
 
@@ -511,6 +513,7 @@ struct CreateDocumentView: View {
         if let linkedCompany {
             appState.linkContact(contact.id, to: linkedCompany.id)
         }
+        triggerContactTagGeneration(contactID: contact.id)
         return contact.id
     }
 
@@ -536,6 +539,68 @@ struct CreateDocumentView: View {
                 return firstToken.map(String.init)
             }
         return Array(Set(normalized))
+    }
+
+    private func triggerCompanyTagGeneration(companyID: UUID) {
+        guard companyTags.isEmpty else { return }
+        let context = companyTagContext()
+        appState.generateTagsForCreate(
+            type: .company,
+            documentID: companyID,
+            name: companyName,
+            summary: companySummary,
+            notes: companyNotes,
+            tags: companyTags,
+            photos: images,
+            context: context,
+            tagLanguage: settings.language
+        )
+    }
+
+    private func triggerContactTagGeneration(contactID: UUID) {
+        guard contactTags.isEmpty else { return }
+        let context = contactTagContext()
+        appState.generateTagsForCreate(
+            type: .contact,
+            documentID: contactID,
+            name: contactName,
+            summary: contactTitle,
+            notes: contactNotes,
+            tags: contactTags,
+            photos: images,
+            context: context,
+            tagLanguage: settings.language
+        )
+    }
+
+    private func companyTagContext() -> String {
+        [
+            companySummary,
+            companyIndustry,
+            companyServiceType,
+            companyTargetAudience,
+            companyMarketRegion,
+            companyLocation,
+            companyWebsite,
+            companyNotes
+        ]
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .joined(separator: " | ")
+    }
+
+    private func contactTagContext() -> String {
+        [
+            contactTitle,
+            contactDepartment,
+            selectedCompany?.name ?? "",
+            contactLocation,
+            contactWebsite,
+            contactNotes
+        ]
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+        .joined(separator: " | ")
     }
 
     private func resolveCompanyForCreate() -> UUID? {
@@ -575,6 +640,7 @@ struct CreateDocumentView: View {
         if !resolvedLocation.isEmpty { updated.location = resolvedLocation }
         if !companyOriginalLocation.isEmpty { updated.originalLocation = companyOriginalLocation }
         if !companyMarketRegion.isEmpty { updated.marketRegion = companyMarketRegion }
+        if !companyTargetAudience.isEmpty { updated.targetAudience = companyTargetAudience }
         if !companyWebsite.isEmpty { updated.website = companyWebsite }
         if !companyLinkedin.isEmpty { updated.linkedinURL = companyLinkedin }
         if !companyPhone.isEmpty { updated.phone = companyPhone }
@@ -860,6 +926,7 @@ struct CreateDocumentView: View {
         styledTextField(settings.text(.foundedYear), text: $companyFoundedYear, isBlue: isBlue)
         styledTextField(settings.text(.headquarters), text: $companyHeadquarters, isBlue: isBlue)
         styledTextField(settings.text(.serviceTypeLabel), text: $companyServiceType, isBlue: isBlue)
+        styledTextField(settings.text(.targetAudience), text: $companyTargetAudience, isBlue: isBlue)
         styledTextField(settings.text(.location), text: companyLocationBinding, isBlue: isBlue)
         styledTextField(settings.text(.marketRegionLabel), text: $companyMarketRegion, isBlue: isBlue)
         styledTextField(settings.text(.website), text: $companyWebsite, isBlue: isBlue)
@@ -1122,12 +1189,12 @@ struct CreateDocumentView: View {
         } else if let contact = prefill.contact {
             let candidateEN = contact.companyNameEN.trimmingCharacters(in: .whitespacesAndNewlines)
             let candidateZH = contact.companyNameZH.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !candidateEN.isEmpty {
-                setIfEmpty(&companyName, candidateEN)
-            }
-            if !candidateZH.isEmpty {
-                setIfEmpty(&companyOriginalName, candidateZH)
-            }
+            applyNamePrefill(
+                primary: &companyName,
+                secondary: &companyOriginalName,
+                nameEN: candidateEN,
+                nameZH: candidateZH
+            )
         }
         normalizeContactCompanyCollision()
     }
@@ -1137,8 +1204,12 @@ struct CreateDocumentView: View {
     }
 
     private func applyContactPrefill(_ contact: ContactPrefill) {
-        setIfEmpty(&contactName, contact.nameEN)
-        setIfEmpty(&contactOriginalName, contact.nameZH)
+        applyNamePrefill(
+            primary: &contactName,
+            secondary: &contactOriginalName,
+            nameEN: contact.nameEN,
+            nameZH: contact.nameZH
+        )
         setIfEmpty(&contactTitle, contact.title)
         setIfEmpty(&contactDepartment, contact.department)
         setIfEmpty(&contactPhone, contact.phone)
@@ -1154,8 +1225,12 @@ struct CreateDocumentView: View {
     }
 
     private func applyCompanyPrefill(_ company: CompanyPrefill) {
-        setIfEmpty(&companyName, company.nameEN)
-        setIfEmpty(&companyOriginalName, company.nameZH)
+        applyNamePrefill(
+            primary: &companyName,
+            secondary: &companyOriginalName,
+            nameEN: company.nameEN,
+            nameZH: company.nameZH
+        )
         setIfEmpty(&companySummary, company.summary)
         setIfEmpty(&companyIndustry, company.industry)
         setIfEmpty(&companyServiceType, company.serviceType)
@@ -1194,6 +1269,50 @@ struct CreateDocumentView: View {
         let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         target = trimmed
+    }
+
+    private func applyNamePrefill(
+        primary: inout String,
+        secondary: inout String?,
+        nameEN: String,
+        nameZH: String
+    ) {
+        let en = nameEN.trimmingCharacters(in: .whitespacesAndNewlines)
+        let zh = nameZH.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !en.isEmpty || !zh.isEmpty else { return }
+
+        let primaryTrimmed = primary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secondaryTrimmed = (secondary ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !primaryTrimmed.isEmpty {
+            if secondaryTrimmed.isEmpty {
+                if !en.isEmpty, primaryTrimmed != en, primaryTrimmed != zh, containsChinese(primaryTrimmed) {
+                    secondary = en
+                } else if !zh.isEmpty, primaryTrimmed != en, primaryTrimmed != zh {
+                    secondary = zh
+                }
+            }
+            return
+        }
+
+        if !en.isEmpty, !zh.isEmpty {
+            // When both exist and size is unknown, default Chinese as primary.
+            primary = zh
+            secondary = en
+            return
+        }
+
+        if !zh.isEmpty {
+            primary = zh
+            return
+        }
+        if !en.isEmpty {
+            primary = en
+        }
+    }
+
+    private func containsChinese(_ value: String) -> Bool {
+        value.range(of: "[\\p{Han}]", options: .regularExpression) != nil
     }
 
 

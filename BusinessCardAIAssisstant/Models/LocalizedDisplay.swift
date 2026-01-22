@@ -1,13 +1,39 @@
 import Foundation
 
 extension ContactDocument {
-    func localizedName(for language: AppLanguage) -> String {
+    private func nameLanguageHint(_ value: String?) -> AppLanguage? {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else { return nil }
+        if text.range(of: "[\\p{Han}]", options: .regularExpression) != nil {
+            return .chinese
+        }
+        return .english
+    }
+
+    private func nameForLanguage(_ language: AppLanguage) -> String? {
+        let nameLanguage = nameLanguageHint(name)
+        let originalLanguage = nameLanguageHint(originalName)
+        if nameLanguage == language { return name.nonEmpty }
+        if originalLanguage == language { return originalName?.nonEmpty }
         switch language {
         case .english:
-            return localizedNameEN?.nonEmpty ?? name.nonEmpty ?? originalName?.nonEmpty ?? ""
+            return localizedNameEN?.nonEmpty
         case .chinese:
-            return localizedNameZH?.nonEmpty ?? originalName?.nonEmpty ?? name.nonEmpty ?? ""
+            return localizedNameZH?.nonEmpty
         }
+    }
+
+    func localizedName(for language: AppLanguage) -> String {
+        return nameForLanguage(language) ?? name.nonEmpty ?? originalName?.nonEmpty ?? ""
+    }
+
+    func secondaryName(for language: AppLanguage) -> String? {
+        guard let primaryLanguage = nameLanguageHint(name) else { return nil }
+        guard primaryLanguage != language else { return nil }
+        let primaryName = name.nonEmpty ?? ""
+        guard !primaryName.isEmpty else { return nil }
+        if primaryName == localizedName(for: language) { return nil }
+        return primaryName
     }
 
     func localizedTitle(for language: AppLanguage) -> String {
@@ -38,11 +64,15 @@ extension ContactDocument {
     }
 
     func localizedCompanyName(for language: AppLanguage) -> String {
+        let companyLanguage = nameLanguageHint(companyName)
+        let originalLanguage = nameLanguageHint(originalCompanyName)
+        if companyLanguage == language { return companyName }
+        if originalLanguage == language { return originalCompanyName?.nonEmpty ?? companyName }
         switch language {
         case .english:
             return localizedCompanyNameEN?.nonEmpty ?? companyName
         case .chinese:
-            return localizedCompanyNameZH?.nonEmpty ?? originalCompanyName?.nonEmpty ?? companyName
+            return localizedCompanyNameZH?.nonEmpty ?? companyName
         }
     }
 
@@ -52,13 +82,39 @@ extension ContactDocument {
 }
 
 extension CompanyDocument {
-    func localizedName(for language: AppLanguage) -> String {
+    private func nameLanguageHint(_ value: String?) -> AppLanguage? {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else { return nil }
+        if text.range(of: "[\\p{Han}]", options: .regularExpression) != nil {
+            return .chinese
+        }
+        return .english
+    }
+
+    private func nameForLanguage(_ language: AppLanguage) -> String? {
+        let nameLanguage = nameLanguageHint(name)
+        let originalLanguage = nameLanguageHint(originalName)
+        if nameLanguage == language { return name.nonEmpty }
+        if originalLanguage == language { return originalName?.nonEmpty }
         switch language {
         case .english:
-            return localizedNameEN?.nonEmpty ?? name.nonEmpty ?? originalName?.nonEmpty ?? ""
+            return localizedNameEN?.nonEmpty
         case .chinese:
-            return localizedNameZH?.nonEmpty ?? originalName?.nonEmpty ?? name.nonEmpty ?? ""
+            return localizedNameZH?.nonEmpty
         }
+    }
+
+    func localizedName(for language: AppLanguage) -> String {
+        return nameForLanguage(language) ?? name.nonEmpty ?? originalName?.nonEmpty ?? ""
+    }
+
+    func secondaryName(for language: AppLanguage) -> String? {
+        guard let primaryLanguage = nameLanguageHint(name) else { return nil }
+        guard primaryLanguage != language else { return nil }
+        let primaryName = name.nonEmpty ?? ""
+        guard !primaryName.isEmpty else { return nil }
+        if primaryName == localizedName(for: language) { return nil }
+        return primaryName
     }
 
     func localizedSummary(for language: AppLanguage) -> String {

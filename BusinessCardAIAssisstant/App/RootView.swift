@@ -46,7 +46,6 @@ struct RootView: View {
             }
             .tint(settings.accentColor)
             .preferredColorScheme(settings.appearance.effectiveColorScheme(for: context.date))
-            .allowsHitTesting(!appState.isEnrichingGlobal)
             .onChange(of: selection) { _, newValue in
                 switch newValue {
                 case .create:

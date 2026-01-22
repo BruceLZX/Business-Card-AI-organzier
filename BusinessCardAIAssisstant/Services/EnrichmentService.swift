@@ -28,6 +28,8 @@ struct EnrichmentResult {
     var phone: String?
     var address: String?
     var industry: String?
+    var serviceType: String?
+    var marketRegion: String?
     var companySize: String?
     var revenue: String?
     var foundedYear: String?
@@ -246,16 +248,7 @@ private struct OCRPayload: Decodable {
     let error: OCRErrorPayload?
 }
 
-protocol EnrichmentProviding {
-    func buildPrompt(for request: EnrichmentRequest) -> String
-    func enrich(
-        _ request: EnrichmentRequest,
-        tagLanguage: AppLanguage,
-        completion: @escaping (EnrichmentResult?) -> Void
-    )
-}
-
-final class EnrichmentService: EnrichmentProviding {
+final class EnrichmentService {
     private let client = OpenAIClient()
     private let extractor = OCRExtractionService()
 
@@ -295,10 +288,7 @@ final class EnrichmentService: EnrichmentProviding {
             return
         }
 
-        let focuses = [
-            "official sources, professional profiles",
-            "news, press releases, market databases"
-        ]
+        let focuses = searchFocuses(for: request)
         performSearch(request: request, focus: focuses[0]) { [weak self] primary, errorCode in
             guard let self else { return }
             guard let primary else {
@@ -325,6 +315,47 @@ final class EnrichmentService: EnrichmentProviding {
         }
     }
 
+    private func searchFocuses(for request: EnrichmentRequest) -> [String] {
+        if isChinaRelated(request) {
+            return [
+                "chinese sources, official sites, local directories",
+                "international sources, english news, global databases"
+            ]
+        }
+        return [
+            "official sources, professional profiles, international sources",
+            "news, press releases, market databases"
+        ]
+    }
+
+    private func isChinaRelated(_ request: EnrichmentRequest) -> Bool {
+        let combined = [
+            request.name,
+            request.summary,
+            request.notes,
+            request.context,
+            request.photoInsights,
+            request.tags.joined(separator: " ")
+        ]
+        .joined(separator: " ")
+
+        if combined.range(of: "[\\p{Han}]", options: .regularExpression) != nil {
+            return true
+        }
+
+        let lowered = combined.lowercased()
+        if lowered.contains("china") || lowered.contains("prc") || lowered.contains("mainland") {
+            return true
+        }
+
+        let preferredLinks = request.preferredLinks.compactMap { $0?.lowercased() }
+        if preferredLinks.contains(where: { $0.contains(".cn") || $0.contains("://cn.") }) {
+            return true
+        }
+
+        return false
+    }
+
     func photoInsights(type: EnrichmentRequest.TargetType, images: [UIImage], completion: @escaping (String) -> Void) {
         guard !images.isEmpty else {
             completion("")
@@ -341,6 +372,34 @@ final class EnrichmentService: EnrichmentProviding {
             }
             completion(Self.buildPhotoInsights(from: parsed, type: type))
         }
+    }
+
+    func generateTagsForCreate(
+        request: EnrichmentRequest,
+        tagLanguage: AppLanguage,
+        completion: @escaping ([String]) -> Void
+    ) {
+        guard let apiKey = client.apiKey, !apiKey.isEmpty else {
+            completion([])
+            return
+        }
+        let (summaryEN, summaryZH) = summaryForTagging(request.summary)
+        generateTags(
+            request: request,
+            summaryEN: summaryEN,
+            summaryZH: summaryZH,
+            tagLanguage: tagLanguage,
+            completion: completion
+        )
+    }
+
+    private func summaryForTagging(_ summary: String) -> (String, String) {
+        let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return ("", "") }
+        if trimmed.range(of: "[\\p{Han}]", options: .regularExpression) != nil {
+            return ("", trimmed)
+        }
+        return (trimmed, "")
     }
 
     private func performSearch(
@@ -368,7 +427,10 @@ final class EnrichmentService: EnrichmentProviding {
             context: request.context,
             searchFocus: focus
         )
-        client.send(prompt: prompt, model: AIConfig.enrichmentModel, apiKey: apiKey, tools: [["type": "web_search"]]) { result in
+        let primaryModel = AIConfig.enrichmentModel
+        let fallbackModel = AIConfig.enrichmentFallbackModel
+
+        func handleResult(_ result: Result<String, Error>, allowFallback: Bool) {
             switch result {
             case .success(let text):
                 guard let parsed = Self.parseResult(from: text) else {
@@ -381,8 +443,28 @@ final class EnrichmentService: EnrichmentProviding {
                 }
                 completion(parsed, nil)
             case .failure:
-                completion(nil, "network_error")
+                if allowFallback, !fallbackModel.isEmpty, fallbackModel != primaryModel {
+                    client.send(
+                        prompt: prompt,
+                        model: fallbackModel,
+                        apiKey: apiKey,
+                        tools: [["type": "web_search"]]
+                    ) { fallbackResult in
+                        handleResult(fallbackResult, allowFallback: false)
+                    }
+                } else {
+                    completion(nil, "request_failed")
+                }
             }
+        }
+
+        client.send(
+            prompt: prompt,
+            model: primaryModel,
+            apiKey: apiKey,
+            tools: [["type": "web_search"]]
+        ) { result in
+            handleResult(result, allowFallback: true)
         }
     }
 
@@ -431,6 +513,8 @@ final class EnrichmentService: EnrichmentProviding {
         if merged.phone == nil || merged.phone?.isEmpty == true { merged.phone = secondary.phone }
         if merged.address == nil || merged.address?.isEmpty == true { merged.address = secondary.address }
         if merged.industry == nil || merged.industry?.isEmpty == true { merged.industry = secondary.industry }
+        if merged.serviceType == nil || merged.serviceType?.isEmpty == true { merged.serviceType = secondary.serviceType }
+        if merged.marketRegion == nil || merged.marketRegion?.isEmpty == true { merged.marketRegion = secondary.marketRegion }
         if merged.companySize == nil || merged.companySize?.isEmpty == true { merged.companySize = secondary.companySize }
         if merged.revenue == nil || merged.revenue?.isEmpty == true { merged.revenue = secondary.revenue }
         if merged.foundedYear == nil || merged.foundedYear?.isEmpty == true { merged.foundedYear = secondary.foundedYear }
@@ -492,6 +576,8 @@ final class EnrichmentService: EnrichmentProviding {
             phone: payload.phone,
             address: payload.address,
             industry: payload.industry,
+            serviceType: payload.service_type,
+            marketRegion: payload.market_region,
             companySize: payload.company_size,
             revenue: payload.revenue,
             foundedYear: payload.founded_year,
@@ -512,6 +598,8 @@ final class EnrichmentService: EnrichmentProviding {
             result.phone ?? "",
             result.address ?? "",
             result.industry ?? "",
+            result.serviceType ?? "",
+            result.marketRegion ?? "",
             result.companySize ?? "",
             result.revenue ?? "",
             result.foundedYear ?? "",
@@ -550,6 +638,8 @@ private struct EnrichmentPayload: Decodable {
     let phone: String?
     let address: String?
     let industry: String?
+    let service_type: String?
+    let market_region: String?
     let company_size: String?
     let revenue: String?
     let founded_year: String?
@@ -599,9 +689,15 @@ private final class OpenAIClient {
             return
         }
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             if let error {
                 completion(.failure(error))
+                return
+            }
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                debugPrint("OpenAIClient error status \(http.statusCode): \(body.prefix(1000))")
+                completion(.failure(OpenAIClientError.httpStatus(http.statusCode)))
                 return
             }
             guard let data else {
@@ -665,9 +761,15 @@ private final class OpenAIClient {
             return
         }
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             if let error {
                 completion(.failure(error))
+                return
+            }
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                debugPrint("OpenAIClient vision error status \(http.statusCode): \(body.prefix(1000))")
+                completion(.failure(OpenAIClientError.httpStatus(http.statusCode)))
                 return
             }
             guard let data else {
@@ -691,6 +793,7 @@ private final class OpenAIClient {
 private enum OpenAIClientError: Error {
     case invalidURL
     case emptyResponse
+    case httpStatus(Int)
 }
 
 private struct OpenAIResponse: Decodable {

@@ -13,7 +13,7 @@ struct ContactDetailView: View {
     @State private var photoSourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var showEnrichConfirm = false
     @State private var showLinkCompanyPicker = false
-    @State private var showOriginalName = false
+    @State private var displayLanguage: AppLanguage = .english
     @State private var showDeleteConfirm = false
     @State private var pendingUnlinkCompanyID: UUID?
     @State private var showUnlinkConfirm = false
@@ -35,18 +35,6 @@ struct ContactDetailView: View {
 
     init(contact: ContactDocument) {
         _draft = State(initialValue: contact)
-    }
-
-    private var shouldShowOriginalName: Bool {
-        if let originalName = draft.originalName, !originalName.isEmpty {
-            return true
-        }
-        guard let sourceLanguageCode = draft.sourceLanguageCode else { return false }
-        return sourceLanguageCode != settings.language.languageCode
-    }
-
-    private var displayLanguage: AppLanguage {
-        showOriginalName ? .chinese : .english
     }
 
     private var displayName: String {
@@ -72,13 +60,13 @@ struct ContactDetailView: View {
     private var locationBinding: Binding<String> {
         Binding(
             get: {
-                if showOriginalName {
+                if displayLanguage == .chinese {
                     return draft.originalLocation ?? ""
                 }
                 return draft.location ?? ""
             },
             set: { newValue in
-                if showOriginalName {
+                if displayLanguage == .chinese {
                     draft.originalLocation = newValue
                 } else {
                     draft.location = newValue
@@ -101,7 +89,7 @@ struct ContactDetailView: View {
     }
 
     private var aiSummaryText: String {
-        if showOriginalName {
+        if displayLanguage == .chinese {
             return !draft.aiSummaryZH.isEmpty ? draft.aiSummaryZH : draft.aiSummaryEN
         }
         return !draft.aiSummaryEN.isEmpty ? draft.aiSummaryEN : draft.aiSummaryZH
@@ -127,12 +115,11 @@ struct ContactDetailView: View {
             .padding(.vertical, 16)
         }
         .navigationTitle(settings.text(.contact))
-        .navigationBarBackButtonHidden(isEnriching)
         .onAppear {
             if let current = appState.contact(for: draft.id) {
                 draft = current
             }
-            showOriginalName = settings.language == .chinese
+            displayLanguage = settings.language
             appState.ensureContactLocalization(contactID: draft.id, targetLanguage: settings.language)
         }
         .onReceive(appState.$contacts) { _ in
@@ -142,15 +129,14 @@ struct ContactDetailView: View {
             appState.ensureContactLocalization(contactID: draft.id, targetLanguage: settings.language)
         }
         .onChange(of: settings.language) { _, newValue in
-            showOriginalName = newValue == .chinese
+            displayLanguage = newValue
             appState.ensureContactLocalization(contactID: draft.id, targetLanguage: newValue)
         }
-        .onChange(of: showOriginalName) { _, newValue in
-            let language: AppLanguage = newValue ? .chinese : .english
-            appState.ensureContactLocalization(contactID: draft.id, targetLanguage: language)
+        .onChange(of: displayLanguage) { _, newValue in
+            appState.ensureContactLocalization(contactID: draft.id, targetLanguage: newValue)
         }
         .onDisappear {
-            showOriginalName = settings.language == .chinese
+            clearAllHighlightsIfNeeded()
         }
         .sheet(isPresented: $isPresentingCamera) {
             CameraView { image in
@@ -303,20 +289,16 @@ struct ContactDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .profile {
-                TextField(settings.text(.name), text: $draft.name)
-                if shouldShowOriginalName {
-                    TextField(settings.text(.originalName), text: binding(for: $draft.originalName))
-                }
-                TextField(settings.text(.title), text: $draft.title)
-                TextField(settings.text(.department), text: binding(for: $draft.department))
+                styledTextField(settings.text(.name), text: $draft.name)
+                styledTextField(settings.text(.originalName), text: binding(for: $draft.originalName))
+                styledTextField(settings.text(.title), text: $draft.title)
+                styledTextField(settings.text(.department), text: binding(for: $draft.department))
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(displayName.isEmpty ? "—" : displayName)
                         .font(.title2.bold())
-                    if let originalName = draft.originalName,
-                       !originalName.isEmpty,
-                       originalName != draft.name {
-                        Text("\(settings.text(.originalName)): \(originalName)")
+                    if let secondaryName = draft.secondaryName(for: displayLanguage), !secondaryName.isEmpty {
+                        Text(secondaryName)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -400,9 +382,9 @@ struct ContactDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .details {
-                TextField(settings.text(.phone), text: $draft.phone)
-                TextField(settings.text(.email), text: $draft.email)
-                TextField(settings.text(.location), text: locationBinding)
+                styledTextField(settings.text(.phone), text: $draft.phone)
+                styledTextField(settings.text(.email), text: $draft.email)
+                styledTextField(settings.text(.location), text: locationBinding)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     if let phoneURL = phoneURL(from: draft.phone) {
@@ -476,8 +458,8 @@ struct ContactDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .links {
-                TextField(settings.text(.personalSite), text: binding(for: $draft.website))
-                TextField(settings.text(.linkedin), text: binding(for: $draft.linkedinURL))
+                styledTextField(settings.text(.personalSite), text: binding(for: $draft.website))
+                styledTextField(settings.text(.linkedin), text: binding(for: $draft.linkedinURL))
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     if let url = draft.websiteURL {
@@ -629,7 +611,7 @@ struct ContactDetailView: View {
                                             pendingUnlinkCompanyID = company.id
                                             showUnlinkConfirm = true
                                         } label: {
-                                            Label(settings.text(.unlinkAction), systemImage: "link.badge.xmark")
+                                            Label(settings.text(.unlinkAction), systemImage: "link.badge.minus")
                                         }
                                     }
                                 }
@@ -637,7 +619,7 @@ struct ContactDetailView: View {
                         }
                         .padding(.vertical, 4)
                     }
-                    .frame(height: 240)
+                    .frame(height: relatedListHeight(count: linkedCompanies.count))
                 }
                 HStack(spacing: 10) {
                     if isSelectingCompanies {
@@ -659,7 +641,7 @@ struct ContactDetailView: View {
 
                     ActionCardButton(
                         title: settings.text(.unlinkAction),
-                        systemImage: "link.badge.xmark",
+                        systemImage: "link.badge.minus",
                         role: .destructive
                     ) {
                         if isSelectingCompanies {
@@ -674,6 +656,14 @@ struct ContactDetailView: View {
                 }
             }
         }
+    }
+
+    private func relatedListHeight(count: Int) -> CGFloat {
+        let rowHeight: CGFloat = 72
+        let spacing: CGFloat = 10
+        let maxRows = 3
+        let rows = min(max(count, 1), maxRows)
+        return CGFloat(rows) * rowHeight + CGFloat(max(0, rows - 1)) * spacing + 8
     }
 
     private var photosSection: some View {
@@ -734,9 +724,18 @@ struct ContactDetailView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                .frame(height: 260)
+                .frame(height: photoGridHeight(count: draft.photoIDs.count))
             }
         }
+    }
+
+    private func photoGridHeight(count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        let rowHeight: CGFloat = 120
+        let spacing: CGFloat = 12
+        let maxRows = 2
+        let rows = min(Int(ceil(Double(count) / 2.0)), maxRows)
+        return CGFloat(rows) * rowHeight + CGFloat(max(0, rows - 1)) * spacing + 8
     }
 
     private var notesSection: some View {
@@ -752,7 +751,7 @@ struct ContactDetailView: View {
             onCancel: cancelSection
         ) {
             if editingSection == .notes {
-                TextField(settings.text(.notes), text: $draft.notes, axis: .vertical)
+                styledTextField(settings.text(.notes), text: $draft.notes, axis: .vertical)
             } else {
                 Text(draft.notes.isEmpty ? "—" : draft.notes)
                     .foregroundStyle(.secondary)
@@ -780,6 +779,7 @@ struct ContactDetailView: View {
     }
 
     private func saveSection() {
+        clearHighlightsForEditedSection()
         appState.updateContact(draft)
         appState.ensureContactLocalization(contactID: draft.id, targetLanguage: settings.language)
         editingSection = nil
@@ -805,9 +805,9 @@ struct ContactDetailView: View {
     }
 
     private var languageToggle: some View {
-        Picker("", selection: $showOriginalName) {
-            Text("EN").tag(false)
-            Text("中文").tag(true)
+        Picker("", selection: $displayLanguage) {
+            Text("EN").tag(AppLanguage.english)
+            Text("中文").tag(AppLanguage.chinese)
         }
         .pickerStyle(.segmented)
         .frame(maxWidth: 140)
@@ -816,6 +816,39 @@ struct ContactDetailView: View {
 
     private func displayCompanyName(for company: CompanyDocument) -> String {
         company.localizedName(for: displayLanguage)
+    }
+
+    private func clearHighlightsForEditedSection() {
+        guard let section = editingSection else { return }
+        let keys: [String]
+        switch section {
+        case .profile:
+            keys = ["title", "department"]
+        case .details:
+            keys = ["phone", "email", "location"]
+        case .links:
+            keys = ["website", "linkedin"]
+        case .tags:
+            keys = ["tags"]
+        case .notes:
+            keys = []
+        }
+        clearHighlights(keys)
+    }
+
+    private func clearHighlights(_ keys: [String]) {
+        guard !keys.isEmpty else { return }
+        keys.forEach { key in
+            draft.lastEnrichedFields.removeAll { $0 == key }
+            draft.lastEnrichedValues.removeValue(forKey: key)
+        }
+    }
+
+    private func clearAllHighlightsIfNeeded() {
+        guard !draft.lastEnrichedFields.isEmpty else { return }
+        draft.lastEnrichedFields.removeAll()
+        draft.lastEnrichedValues.removeAll()
+        appState.updateContact(draft)
     }
 
     @ViewBuilder
@@ -951,6 +984,20 @@ struct ContactDetailView: View {
         draft.lastEnrichedValues.removeValue(forKey: key)
         draft.lastEnrichedFields.removeAll { $0 == key }
         appState.updateContact(draft)
+    }
+
+    private func styledTextField(_ title: String, text: Binding<String>, axis: Axis = .horizontal) -> some View {
+        TextField(title, text: text, axis: axis)
+            .textFieldStyle(.plain)
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(.separator).opacity(0.6), lineWidth: 1)
+            )
     }
 
     private func binding(for value: Binding<String?>) -> Binding<String> {

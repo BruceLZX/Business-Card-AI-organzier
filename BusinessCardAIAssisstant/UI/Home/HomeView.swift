@@ -16,9 +16,10 @@ struct HomeView: View {
     @State private var showParseError = false
     @State private var showManualContact = false
     @State private var showManualCompany = false
+    @State private var pendingDeleteRecent: RecentDocument?
+    @State private var showRecentDeleteConfirm = false
 
     private let ocrService = OCRService()
-    private let classifier = DocumentClassifier()
     private let extractor = OCRExtractionService()
 
     var body: some View {
@@ -150,6 +151,10 @@ struct HomeView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .onLongPressGesture {
+                                    pendingDeleteRecent = item
+                                    showRecentDeleteConfirm = true
+                                }
                             }
                         }
                     }
@@ -249,6 +254,19 @@ struct HomeView: View {
         } message: {
             Text(parseErrorMessage)
         }
+        .confirmationDialog(settings.text(.deleteConfirmTitle), isPresented: $showRecentDeleteConfirm) {
+            Button(settings.text(.confirmDelete), role: .destructive) {
+                if let item = pendingDeleteRecent {
+                    deleteRecent(item)
+                }
+                pendingDeleteRecent = nil
+            }
+            Button(settings.text(.cancel), role: .cancel) {
+                pendingDeleteRecent = nil
+            }
+        } message: {
+            Text(settings.text(.deleteConfirmMessage))
+        }
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -279,6 +297,7 @@ struct HomeView: View {
                     return
                 }
 
+                // Vision parse failed, fallback to OCR text pipeline.
                 recognizeAllText(in: images) { recognizedText in
                     DispatchQueue.main.async {
                         ocrText = recognizedText
@@ -353,6 +372,15 @@ struct HomeView: View {
             } else {
                 Text(settings.text(.noContacts))
             }
+        }
+    }
+
+    private func deleteRecent(_ item: RecentDocument) {
+        switch item.kind {
+        case .company:
+            appState.deleteCompany(item.id)
+        case .contact:
+            appState.deleteContact(item.id)
         }
     }
 }

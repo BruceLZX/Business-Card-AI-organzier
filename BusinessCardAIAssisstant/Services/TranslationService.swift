@@ -86,9 +86,15 @@ private final class TranslationClient {
             return
         }
 
-        URLSession.shared.dataTask(with: request) { data, _, error in
+        URLSession.shared.dataTask(with: request) { data, response, error in
             if let error {
                 completion(.failure(error))
+                return
+            }
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                debugPrint("TranslationClient error status \(http.statusCode): \(body.prefix(1000))")
+                completion(.failure(TranslationClientError.httpStatus(http.statusCode)))
                 return
             }
             guard let data else {
@@ -112,6 +118,7 @@ private final class TranslationClient {
 private enum TranslationClientError: Error {
     case invalidURL
     case emptyResponse
+    case httpStatus(Int)
 }
 
 private enum SecretsLoader {

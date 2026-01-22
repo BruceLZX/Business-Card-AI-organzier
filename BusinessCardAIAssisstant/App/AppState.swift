@@ -173,8 +173,65 @@ final class AppState: ObservableObject {
         tagPool = merged
     }
 
+    func generateTagsForCreate(
+        type: EnrichmentRequest.TargetType,
+        documentID: UUID,
+        name: String,
+        summary: String,
+        notes: String,
+        tags: [String],
+        photos: [UIImage],
+        context: String,
+        tagLanguage: AppLanguage
+    ) {
+        guard tags.isEmpty else { return }
+        guard enrichmentService.hasValidAPIKey() else { return }
+
+        enrichmentService.photoInsights(type: type, images: photos) { [weak self] insights in
+            guard let self else { return }
+            let request = EnrichmentRequest(
+                type: type,
+                name: name,
+                summary: summary,
+                notes: notes,
+                tags: tags,
+                tagPool: self.tagPool,
+                photoInsights: insights,
+                preferredLinks: [],
+                context: context
+            )
+            self.enrichmentService.generateTagsForCreate(request: request, tagLanguage: tagLanguage) { [weak self] newTags in
+                guard let self else { return }
+                let normalized = self.normalizeTags(newTags)
+                guard !normalized.isEmpty else { return }
+                Task { @MainActor in
+                    switch type {
+                    case .company:
+                        guard var company = self.company(for: documentID) else { return }
+                        company.tags = Array(Set(company.tags + normalized))
+                        self.updateCompany(company)
+                    case .contact:
+                        guard var contact = self.contact(for: documentID) else { return }
+                        contact.tags = Array(Set(contact.tags + normalized))
+                        self.updateContact(contact)
+                    }
+                }
+            }
+        }
+    }
+
     private func refreshTagPool() {
         tagPool = Array(Set(companies.flatMap(\.tags) + contacts.flatMap(\.tags))).sorted()
+    }
+
+    private func normalizeTags(_ input: [String]) -> [String] {
+        guard !input.isEmpty else { return [] }
+        let poolMap = Dictionary(uniqueKeysWithValues: tagPool.map { ($0.lowercased(), $0) })
+        return input.compactMap { tag in
+            let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            return poolMap[trimmed.lowercased()] ?? trimmed
+        }
     }
 
     func findDuplicateContact(name: String, phone: String, email: String) -> ContactDocument? {
@@ -221,7 +278,7 @@ final class AppState: ObservableObject {
             location: "",
             originalLocation: nil,
             serviceType: "",
-            targetAudience: .b2b,
+            targetAudience: "",
             marketRegion: "",
             notes: "",
             tags: [],
@@ -504,8 +561,12 @@ final class AppState: ObservableObject {
                     applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
                     applyField("address", current: updated.address, new: result.address ?? "") { updated.address = $0 }
                     applyOptionalField("industry", current: updated.industry, new: result.industry) { updated.industry = $0 }
+                    applyOptionalField("serviceType", current: updated.serviceType, new: result.serviceType) { updated.serviceType = $0 }
+                    applyOptionalField("marketRegion", current: updated.marketRegion, new: result.marketRegion) { updated.marketRegion = $0 }
                     applyOptionalField("companySize", current: updated.companySize, new: result.companySize) { updated.companySize = $0 }
-                    applyOptionalField("revenue", current: updated.revenue, new: result.revenue) { updated.revenue = $0 }
+                    if shouldAcceptRevenue(result.revenue) {
+                        applyOptionalField("revenue", current: updated.revenue, new: result.revenue) { updated.revenue = $0 }
+                    }
                     applyOptionalField("foundedYear", current: updated.foundedYear, new: result.foundedYear) { updated.foundedYear = $0 }
                     applyOptionalField("headquarters", current: updated.headquarters, new: result.headquarters) { updated.headquarters = $0 }
 
@@ -916,6 +977,12 @@ final class AppState: ObservableObject {
     }
 
     private func updateProgress(stage: EnrichmentStage) {
+        if !Thread.isMainThread {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateProgress(stage: stage)
+            }
+            return
+        }
         let totalStages = 4
         let progress: Double
         switch stage {
@@ -934,6 +1001,18 @@ final class AppState: ObservableObject {
             progress: progress,
             totalStages: totalStages
         )
+    }
+
+    private func shouldAcceptRevenue(_ value: String?) -> Bool {
+        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let lowered = trimmed.lowercased()
+        let currencyHints = ["$", "usd", "cny", "rmb", "eur", "gbp", "¥", "￥", "元", "人民币", "万", "亿", "million", "billion"]
+        if currencyHints.contains(where: { lowered.contains($0) }) {
+            return true
+        }
+        let digits = lowered.filter { $0.isNumber }
+        return digits.count <= 6
     }
 
     private func companyName(for companyID: UUID) -> String? {

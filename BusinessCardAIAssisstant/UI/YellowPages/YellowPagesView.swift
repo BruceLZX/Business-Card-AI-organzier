@@ -14,6 +14,13 @@ struct DirectoryView: View {
     @State private var filters = FilterOptions()
     @State private var isPresentingFilters = false
     @State private var searchText = ""
+    @State private var pendingDeleteTarget: DeleteTarget?
+    @State private var showDeleteConfirm = false
+
+    private enum DeleteTarget {
+        case company(CompanyDocument)
+        case contact(ContactDocument)
+    }
 
     private var filteredCompanies: [CompanyDocument] {
         let searched = SearchService.filterCompanies(appState.companies, query: searchText)
@@ -79,6 +86,10 @@ struct DirectoryView: View {
                                                     )
                                                 }
                                                 .buttonStyle(.plain)
+                                                .onLongPressGesture {
+                                                    pendingDeleteTarget = .company(company)
+                                                    showDeleteConfirm = true
+                                                }
                                             }
                                         } header: {
                                             sectionHeader(title: group.key)
@@ -119,6 +130,10 @@ struct DirectoryView: View {
                                                     )
                                                 }
                                                 .buttonStyle(.plain)
+                                                .onLongPressGesture {
+                                                    pendingDeleteTarget = .contact(contact)
+                                                    showDeleteConfirm = true
+                                                }
                                             }
                                         } header: {
                                             sectionHeader(title: group.key)
@@ -152,6 +167,17 @@ struct DirectoryView: View {
             FilterSheetView(filters: $filters)
                 .environmentObject(settings)
         }
+        .confirmationDialog(settings.text(.deleteConfirmTitle), isPresented: $showDeleteConfirm) {
+            Button(settings.text(.confirmDelete), role: .destructive) {
+                handlePendingDelete()
+                pendingDeleteTarget = nil
+            }
+            Button(settings.text(.cancel), role: .cancel) {
+                pendingDeleteTarget = nil
+            }
+        } message: {
+            Text(settings.text(.deleteConfirmMessage))
+        }
         .onAppear {
             refreshLocalizations()
         }
@@ -166,6 +192,16 @@ struct DirectoryView: View {
         }
         appState.contacts.forEach { contact in
             appState.ensureContactLocalization(contactID: contact.id, targetLanguage: settings.language)
+        }
+    }
+
+    private func handlePendingDelete() {
+        guard let target = pendingDeleteTarget else { return }
+        switch target {
+        case .company(let company):
+            appState.deleteCompany(company.id)
+        case .contact(let contact):
+            appState.deleteContact(contact.id)
         }
     }
 
@@ -203,8 +239,9 @@ struct DirectoryView: View {
             }
         }
 
-        if let audience = filters.targetAudience.asAudience {
-            let matches = companies(for: contact).contains { $0.targetAudience == audience }
+        if !filters.targetAudience.isEmpty {
+            let query = filters.targetAudience.lowercased()
+            let matches = companies(for: contact).contains { $0.targetAudience.lowercased().contains(query) }
             if !matches {
                 return false
             }

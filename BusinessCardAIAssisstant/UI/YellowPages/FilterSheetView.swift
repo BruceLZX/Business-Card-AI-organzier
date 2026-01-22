@@ -21,12 +21,7 @@ struct FilterSheetView: View {
                 }
 
                 Section(settings.text(.targetAudience)) {
-                    Picker(settings.text(.targetAudience), selection: $filters.targetAudience) {
-                        ForEach(TargetAudienceFilter.allCases) { option in
-                            Text(option.label(language: settings.language)).tag(option)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    TextField(settings.text(.targetAudience), text: $filters.targetAudience)
                 }
 
                 Section(settings.text(.marketRegion)) {
