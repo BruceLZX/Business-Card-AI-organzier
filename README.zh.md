@@ -2,58 +2,36 @@
 
 [English / 英文](README.md)
 
-一个用于 iPhone 的名片与公司资料采集应用。通过拍照生成结构化“联系人/公司档案”，支持搜索、标签与双向关联，并可使用 AI 联网补全信息。
+**一个为高频社交场景打造的 AI 名片资料库。**
+拍一次，结构化一辈子：联系人、公司、链接、标签与 AI 总结保持关联与可追溯。
 
-## 产品需求文档
-- 详细用例见 `Product Requirement.md`（中文）。
+如果你的相册里全是名片照片，但通讯录依然空，这个项目就是为你准备的。
 
-## 核心功能
-- 拍照或从图库添加图片（单个档案最多 10 张）。
-- 联系人与公司详情页的模块化编辑与跳转关联。
-- 目录页的字母索引与多条件筛选（联系人/公司均支持）。
-- Tag pool 可搜索选择，AI 补全标签。
-- AI 补全带分阶段进度、字段级对比与撤销。
+## 产品亮点
+- **活档案，而不是静态照片**：联系人与公司长期关联、可搜索。
+- **视觉优先解析**：多图解析 + OCR 兜底，稳定可靠。
+- **AI 补全可追溯**：字段级高亮、原值对照、逐字段撤销。
+- **语言感知姓名**：按系统语言显示主名，必要时显示原名。
 
-## AI 补全概览
-- 先用 mini 模型解析照片，再用 thinking 模型多阶段联网搜索。
-- 补全过程显示全局进度，期间禁止所有交互。
-- 更新字段高亮显示，并展示原有内容，可一键撤销。
-- 不确定信息用黄色“可能不准确”标记。
+## 产品范围
+- 拍照创建联系人/公司档案并编辑维护。
+- 联系人与公司双向关联与快速跳转。
+- 名录页支持搜索、筛选、字母索引。
+- AI 补全分阶段进度与字段级追踪。
 
-## 技术栈
-- SwiftUI + 本地存储。
-- OpenAI Responses API（密钥配置在 `Secrets.xcconfig`）。
+## 文档
+- 产品需求（中文）：`Product Requirement.md`
+- 产品需求（英文）：`Product Requirement.en.md`
 
-## 项目结构
-- `BusinessCardAIAssisstant/` 应用源码
-- `BusinessCardAIAssisstant/Services/` 拍照、OCR、补全、搜索
-- `BusinessCardAIAssisstant/Storage/` 本地存储与图片管理
-- `BusinessCardAIAssisstant/UI/` 页面与组件
-- `BusinessCardAIAssisstant/Models/` 数据模型
-- `BusinessCardAIAssisstant/App/` 应用入口与全局状态
+## 近期路线图
+- 设置页显示内存占用。
+- 用户自行配置 API 与模型，并对每阶段进行验证。
+- 档案分享与导入确认 + 重名合并策略。
+- 单个档案导出 PDF。
+- 付费购买（不做内购）。
 
-## 本地配置
-1. 创建 `BusinessCardAIAssisstant/Secrets.xcconfig`：
-   ```
-   OPENAI_API_KEY = your_key_here
-   ```
-2. 打开 `BusinessCardAIAssisstant.xcodeproj` 运行。
+## 贡献方式
+欢迎提交 PR 或 Issue。产品行为以 Product Requirement 文档为准。
 
-## AI 配置（本地、Git 忽略）
-- 模型选择与 prompt 集中在 `BusinessCardAIAssisstant/App/AIConfig.swift`。
-- 该文件已被 `.gitignore` 排除，不会提交到仓库。
-- 每段 prompt 都有注释说明用途与调用位置。
-
-## 当前进度
-- 已完成：档案与目录基础流程、AI 补全流程与对比撤销。
-- 进行中：按 `Product Requirement.md` 继续验证与优化细节。
-
-## 下一步目标
-- 开通收费功能（订阅或一次性解锁）。
-- 文档可通过分享按钮分享给其他已安装该 App 的用户。
-- 每个文档支持生成 PDF 报告，可分享或保存。
-- 根据用户地区选择 AI 服务（如中国区使用其他 API）。
-
-## 备注
-- App icon 位于 `BusinessCardAIAssisstant/Assets.xcassets/AppIcon.appiconset`。
-- 密钥不提交，`.gitignore` 已排除相关文件。
+## License
+TBD。

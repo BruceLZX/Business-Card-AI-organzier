@@ -2,4 +2,4 @@
 
 [中文说明 / Chinese](README.UI.Components.zh.md)
 
-Shared SwiftUI components (tag picker, chips, reusable rows).
+Shared SwiftUI components (tag picker, chips, reusable rows, info grid, undo button).

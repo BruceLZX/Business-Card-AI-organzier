@@ -6,6 +6,6 @@ Data models for contacts, companies, filters, and recents.
 
 Main models:
 - `ContactDocument`
-- `CompanyDocument`
-- `FilterOptions`, `TargetAudience`
+- `CompanyDocument` (free-text target audience, localized fields, enrichment tracking)
+- `FilterOptions`
 - `RecentDocument`

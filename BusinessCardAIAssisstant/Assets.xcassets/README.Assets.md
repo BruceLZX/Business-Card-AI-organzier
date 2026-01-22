@@ -2,4 +2,4 @@
 
 [中文说明 / Chinese](README.Assets.zh.md)
 
-Xcode asset catalog for app icon and colors.
+Xcode asset catalog for app icon and colors (AppIcon lives under `AppIcon.appiconset`).

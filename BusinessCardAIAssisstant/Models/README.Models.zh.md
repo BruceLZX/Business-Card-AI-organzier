@@ -6,6 +6,6 @@
 
 主要模型：
 - `ContactDocument`
-- `CompanyDocument`
-- `FilterOptions`, `TargetAudience`
+- `CompanyDocument`（服务对象为文本输入，包含本地化字段与补全标记）
+- `FilterOptions`
 - `RecentDocument`

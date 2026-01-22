@@ -194,4 +194,35 @@
 
 ### 8.2 To Do（执行清单）
 （待补充）
+
+## 9) 工程与配置说明
+
+### 9.1 技术栈
+- SwiftUI + 本地存储。
+- OpenAI Responses API（视觉解析、补全、翻译）。
+
+### 9.2 项目结构
+- `BusinessCardAIAssisstant/` 应用源码
+- `BusinessCardAIAssisstant/App/` 入口、设置、全局状态与文案
+- `BusinessCardAIAssisstant/UI/` 页面与组件
+- `BusinessCardAIAssisstant/Models/` 数据模型与筛选规则
+- `BusinessCardAIAssisstant/Services/` 解析、补全、翻译、搜索
+- `BusinessCardAIAssisstant/Storage/` 本地存储与图片管理
+- `BusinessCardAIAssisstant/Resources/` 资源文件
+- `BusinessCardAIAssisstant/Assets.xcassets/` 图标与颜色资源
+
+### 9.3 本地配置
+1. 创建 `BusinessCardAIAssisstant/Secrets.xcconfig`：
+   ```
+   OPENAI_API_KEY = your_key_here
+   ```
+2. 打开 `BusinessCardAIAssisstant.xcodeproj` 运行。
+
+### 9.4 AI 配置（本地、Git 忽略）
+- 模型选择与 prompt 集中在 `BusinessCardAIAssisstant/App/AIConfig.swift`。
+- 该文件已被 `.gitignore` 排除，不会提交到仓库。
+- 每段 prompt 都有注释说明用途与调用位置。
+
+---
+
 本 README 作为后续开发的唯一基准。
