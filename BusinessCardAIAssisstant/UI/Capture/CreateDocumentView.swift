@@ -106,6 +106,7 @@ struct CreateDocumentView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
+    private let translationService = TranslationService()
 
     let images: [UIImage]
     let ocrText: String
@@ -165,6 +166,9 @@ struct CreateDocumentView: View {
     @State private var pendingContactMatchID: UUID?
     @State private var ocrLanguageCode: String?
     @State private var didApplyPrefill = false
+    @State private var didAutoCheckCompanyMatch = false
+    @State private var didAutoTranslateContactName = false
+    @State private var didAutoTranslateCompanyName = false
 
     init(
         images: [UIImage],
@@ -752,28 +756,31 @@ struct CreateDocumentView: View {
 
     private func stripCompanySuffix(_ name: String) -> String {
         var result = name
-        let suffixPatterns = [
-            "\\binc\\b",
-            "\\bincorporated\\b",
-            "\\bltd\\b",
-            "\\blimited\\b",
-            "\\bllc\\b",
-            "\\bplc\\b",
-            "\\bco\\b",
-            "\\bcorp\\b",
-            "\\bcorporation\\b",
-            "\\bcompany\\b",
-            "\\bgroup\\b",
-            "\\bholdings\\b"
-        ]
-        for pattern in suffixPatterns {
+        for pattern in Self.companySuffixPatterns {
             result = result.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
         }
-        result = result.replacingOccurrences(of: "(有限公司|有限責任公司|有限责任公司|股份有限公司|集团|公司)$", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: Self.cnCompanySuffixPattern, with: "", options: .regularExpression)
         return result
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    private static let companySuffixPatterns: [String] = [
+        "\\binc\\b",
+        "\\bincorporated\\b",
+        "\\bltd\\b",
+        "\\blimited\\b",
+        "\\bllc\\b",
+        "\\bplc\\b",
+        "\\bco\\b",
+        "\\bcorp\\b",
+        "\\bcorporation\\b",
+        "\\bcompany\\b",
+        "\\bgroup\\b",
+        "\\bholdings\\b"
+    ]
+
+    private static let cnCompanySuffixPattern = "(有限公司|有限責任公司|有限责任公司|股份有限公司|集团|公司)$"
 
     private func bestNameScore(inputVariants: [String], companyVariants: [String]) -> Double {
         var best = 0.0
@@ -894,7 +901,11 @@ struct CreateDocumentView: View {
     private var needsCompanyMatch: Bool {
         guard source == .scan else { return false }
         guard selectedCompanyID == nil else { return false }
-        return prefillType == .company || prefillType == .both
+        if prefillType == .company || prefillType == .both {
+            return true
+        }
+        let trimmedCompanyName = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return prefillType == .contact && !trimmedCompanyName.isEmpty
     }
 
     private var needsContactMatch: Bool {
@@ -1003,22 +1014,10 @@ struct CreateDocumentView: View {
             if let original = company.originalName, !original.isEmpty {
                 infoRow(settings.text(.originalCompanyName), original)
             }
-            if !company.summary.isEmpty { infoRow(settings.text(.summary), company.summary) }
             if let industry = company.industry, !industry.isEmpty { infoRow(settings.text(.industry), industry) }
-            if let size = company.companySize, !size.isEmpty { infoRow(settings.text(.companySize), size) }
-            if let revenue = company.revenue, !revenue.isEmpty { infoRow(settings.text(.revenue), revenue) }
-            if let founded = company.foundedYear, !founded.isEmpty { infoRow(settings.text(.foundedYear), founded) }
-            if let hq = company.headquarters, !hq.isEmpty { infoRow(settings.text(.headquarters), hq) }
-            if !company.serviceType.isEmpty { infoRow(settings.text(.serviceTypeLabel), company.serviceType) }
             let companyLocation = localizedDisplay(primary: company.location, fallback: company.originalLocation)
             if !companyLocation.isEmpty { infoRow(settings.text(.location), companyLocation) }
-            if !company.marketRegion.isEmpty { infoRow(settings.text(.marketRegionLabel), company.marketRegion) }
             if !company.website.isEmpty { infoRow(settings.text(.website), company.website) }
-            if let linkedin = company.linkedinURL, !linkedin.isEmpty { infoRow(settings.text(.linkedin), linkedin) }
-            if !company.phone.isEmpty { infoRow(settings.text(.phone), company.phone) }
-            if !company.address.isEmpty { infoRow(settings.text(.address), company.address) }
-            if !company.notes.isEmpty { infoRow(settings.text(.notes), company.notes) }
-            if !company.tags.isEmpty { infoRow(settings.text(.tags), company.tags.joined(separator: ", ")) }
         }
         .foregroundStyle(.secondary)
         .padding(.vertical, 4)
@@ -1197,6 +1196,8 @@ struct CreateDocumentView: View {
             )
         }
         normalizeContactCompanyCollision()
+        autoTranslateMissingNamesIfNeeded()
+        autoDetectCompanyMatchIfNeeded()
     }
 
     private func applyPrefillForCurrentType() {
@@ -1254,6 +1255,66 @@ struct CreateDocumentView: View {
             companyName = candidate
             contactName = ""
         }
+    }
+
+    private func autoTranslateMissingNamesIfNeeded() {
+        autoTranslateContactNameIfNeeded()
+        autoTranslateCompanyNameIfNeeded()
+    }
+
+    private func autoTranslateContactNameIfNeeded() {
+        guard !didAutoTranslateContactName else { return }
+        let primary = contactName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secondary = contactOriginalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !primary.isEmpty, secondary.isEmpty else { return }
+        guard translationService.hasValidAPIKey() else { return }
+        didAutoTranslateContactName = true
+        let targetLanguage: AppLanguage = containsChinese(primary) ? .english : .chinese
+        let request = TranslationRequest(fields: ["name": primary], targetLanguage: targetLanguage)
+        translationService.translate(request) { result in
+            guard let translated = result?.fields["name"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !translated.isEmpty else { return }
+            Task { @MainActor in
+                let currentPrimary = contactName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let currentSecondary = contactOriginalName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard currentSecondary.isEmpty, currentPrimary == primary else { return }
+                contactOriginalName = translated
+            }
+        }
+    }
+
+    private func autoTranslateCompanyNameIfNeeded() {
+        guard !didAutoTranslateCompanyName else { return }
+        let primary = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secondary = companyOriginalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !primary.isEmpty, secondary.isEmpty else { return }
+        guard translationService.hasValidAPIKey() else { return }
+        didAutoTranslateCompanyName = true
+        let targetLanguage: AppLanguage = containsChinese(primary) ? .english : .chinese
+        let request = TranslationRequest(fields: ["name": primary], targetLanguage: targetLanguage)
+        translationService.translate(request) { result in
+            guard let translated = result?.fields["name"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !translated.isEmpty else { return }
+            Task { @MainActor in
+                let currentPrimary = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let currentSecondary = companyOriginalName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard currentSecondary.isEmpty, currentPrimary == primary else { return }
+                companyOriginalName = translated
+            }
+        }
+    }
+
+    private func autoDetectCompanyMatchIfNeeded() {
+        guard !didAutoCheckCompanyMatch else { return }
+        guard needsCompanyMatch, !companyMatchResolved else { return }
+        let matches = findCompanyMatches()
+        guard !matches.isEmpty else {
+            didAutoCheckCompanyMatch = true
+            return
+        }
+        companyMatches = matches
+        showCompanyMatchSheet = true
+        didAutoCheckCompanyMatch = true
     }
 
     private func looksLikeCompany(_ value: String) -> Bool {

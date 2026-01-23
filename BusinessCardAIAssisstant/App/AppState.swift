@@ -497,6 +497,10 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 guard let result else {
                     Task { @MainActor in
+                        if errorCode == "empty_result", var current = self.company(for: companyID) {
+                            current.enrichedAt = Date()
+                            self.updateCompany(current)
+                        }
                         self.finishEnrichmentProgress()
                         completion?(false, errorCode ?? "failed")
                     }
@@ -637,6 +641,10 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 guard let result else {
                     Task { @MainActor in
+                        if errorCode == "empty_result", var current = self.contact(for: contactID) {
+                            current.enrichedAt = Date()
+                            self.updateContact(current)
+                        }
                         self.finishEnrichmentProgress()
                         completion?(false, errorCode ?? "failed")
                     }

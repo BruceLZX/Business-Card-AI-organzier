@@ -292,7 +292,24 @@ final class EnrichmentService {
         performSearch(request: request, focus: focuses[0]) { [weak self] primary, errorCode in
             guard let self else { return }
             guard let primary else {
-                completion(nil, errorCode ?? "search_failed")
+                self.fallbackFromInsights(request: request) { fallback in
+                    if let fallback {
+                        self.generateTags(
+                            request: request,
+                            summaryEN: fallback.summaryEN,
+                            summaryZH: fallback.summaryZH,
+                            tagLanguage: tagLanguage
+                        ) { tags in
+                            var updated = fallback
+                            if !tags.isEmpty {
+                                updated.tags = tags
+                            }
+                            completion(updated, nil)
+                        }
+                        return
+                    }
+                    completion(nil, errorCode ?? "search_failed")
+                }
                 return
             }
             self.performSearch(request: request, focus: focuses[1]) { secondary, _ in
@@ -311,6 +328,48 @@ final class EnrichmentService {
                     }
                     completion(updated, nil)
                 }
+            }
+        }
+    }
+
+    private func fallbackFromInsights(
+        request: EnrichmentRequest,
+        completion: @escaping (EnrichmentResult?) -> Void
+    ) {
+        let trimmedInsights = request.photoInsights.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContext = request.context.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSignal = !trimmedInsights.isEmpty || !trimmedContext.isEmpty || !request.summary.isEmpty || !request.notes.isEmpty
+        guard hasSignal else {
+            completion(nil)
+            return
+        }
+
+        guard let apiKey = client.apiKey, !apiKey.isEmpty else {
+            completion(nil)
+            return
+        }
+
+        let prompt = AIConfig.enrichmentFallbackPrompt(
+            typeLabel: request.type == .company ? "company" : "contact",
+            name: request.name,
+            summary: request.summary,
+            notes: request.notes,
+            tags: request.tags,
+            tagPool: request.tagPool,
+            photoInsights: request.photoInsights,
+            context: request.context
+        )
+        let model = AIConfig.enrichmentFallbackModel.isEmpty ? AIConfig.enrichmentSearchModel : AIConfig.enrichmentFallbackModel
+        client.send(prompt: prompt, model: model, apiKey: apiKey, tools: []) { result in
+            switch result {
+            case .success(let text):
+                guard let parsed = Self.parseResult(from: text), !Self.isEmptyResult(parsed) else {
+                    completion(nil)
+                    return
+                }
+                completion(parsed)
+            case .failure:
+                completion(nil)
             }
         }
     }
@@ -427,7 +486,7 @@ final class EnrichmentService {
             context: request.context,
             searchFocus: focus
         )
-        let primaryModel = AIConfig.enrichmentModel
+        let primaryModel = AIConfig.enrichmentSearchModel
         let fallbackModel = AIConfig.enrichmentFallbackModel
 
         func handleResult(_ result: Result<String, Error>, allowFallback: Bool) {

@@ -223,6 +223,9 @@ struct CompanyDetailView: View {
                 editingSection = nil
                 appState.enrichCompany(companyID: draft.id, tagLanguage: settings.language) { success, code in
                     DispatchQueue.main.async {
+                        if success, let current = appState.company(for: draft.id) {
+                            draft = current
+                        }
                         if !success {
                             enrichErrorMessage = {
                                 switch code {
@@ -579,7 +582,7 @@ struct CompanyDetailView: View {
                                             pendingUnlinkContactID = contact.id
                                             showUnlinkConfirm = true
                                         } label: {
-                                            Label(settings.text(.unlinkAction), systemImage: "link.slash")
+                                            Label(settings.text(.unlinkAction), systemImage: "link")
                                         }
                                     }
                                 }
@@ -611,7 +614,7 @@ struct CompanyDetailView: View {
 
                     ActionCardButton(
                         title: settings.text(.unlinkAction),
-                        systemImage: "link.slash",
+                        systemImage: "link",
                         role: .destructive
                     ) {
                         if isSelectingContacts {
