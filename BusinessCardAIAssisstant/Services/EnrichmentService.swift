@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import Vision
 
 struct EnrichmentRequest {
     enum TargetType {
@@ -27,6 +28,7 @@ struct EnrichmentResult {
     var linkedin: String?
     var phone: String?
     var address: String?
+    var companyEmail: String?
     var industry: String?
     var serviceType: String?
     var marketRegion: String?
@@ -38,6 +40,7 @@ struct EnrichmentResult {
     var department: String?
     var location: String?
     var email: String?
+    var wechat: String?
 }
 
 struct OCRParsedResult {
@@ -65,6 +68,7 @@ struct OCRContact {
     let department: String?
     let phone: String
     let email: String
+    let wechat: String
     let locationEN: String?
     let locationZH: String?
     let website: String?
@@ -85,6 +89,7 @@ struct OCRCompany {
     let locationZH: String?
     let marketRegion: String?
     let website: String?
+    let email: String?
     let phone: String?
     let address: String?
     let notes: String?
@@ -125,7 +130,8 @@ final class OCRExtractionService {
             return
         }
 
-        let prompt = AIConfig.ocrImagePrompt()
+        let qrHints = detectBarcodeHints(in: images)
+        let prompt = AIConfig.ocrImagePrompt(qrHints: qrHints)
         client.sendVision(prompt: prompt, model: AIConfig.ocrVisionModel, imageBase64s: base64Images, apiKey: apiKey, tools: []) { result in
             switch result {
             case .success(let responseText):
@@ -134,6 +140,25 @@ final class OCRExtractionService {
                 completion(nil)
             }
         }
+    }
+
+    private func detectBarcodeHints(in images: [UIImage]) -> String {
+        var payloads: [String] = []
+        for image in images {
+            guard let cgImage = image.cgImage else { continue }
+            let request = VNDetectBarcodesRequest()
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            try? handler.perform([request])
+            let results = request.results ?? []
+            for result in results {
+                if let payload = result.payloadStringValue,
+                   !payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    payloads.append(payload)
+                }
+            }
+        }
+        let unique = Array(Set(payloads))
+        return unique.joined(separator: " | ")
     }
 
     private static func parseResult(from text: String) -> OCRParsedResult? {
@@ -163,6 +188,7 @@ private struct OCRPayload: Decodable {
         let department: String?
         let phone: String?
         let email: String?
+        let wechat: String?
         let location_en: String?
         let location_zh: String?
         let location: String?
@@ -182,6 +208,7 @@ private struct OCRPayload: Decodable {
                 department: department?.isEmpty == false ? department : nil,
                 phone: phone ?? "",
                 email: email ?? "",
+                wechat: wechat ?? "",
                 locationEN: location_en?.isEmpty == false ? location_en : (location?.isEmpty == false ? location : nil),
                 locationZH: location_zh?.isEmpty == false ? location_zh : nil,
                 website: website?.isEmpty == false ? website : nil,
@@ -205,6 +232,7 @@ private struct OCRPayload: Decodable {
         let location: String?
         let market_region: String?
         let website: String?
+        let company_email: String?
         let phone: String?
         let address: String?
         let notes: String?
@@ -222,6 +250,7 @@ private struct OCRPayload: Decodable {
                 locationZH: location_zh?.isEmpty == false ? location_zh : nil,
                 marketRegion: market_region?.isEmpty == false ? market_region : nil,
                 website: website?.isEmpty == false ? website : nil,
+                email: company_email?.isEmpty == false ? company_email : nil,
                 phone: phone?.isEmpty == false ? phone : nil,
                 address: address?.isEmpty == false ? address : nil,
                 notes: notes?.isEmpty == false ? notes : nil,
@@ -601,6 +630,7 @@ final class EnrichmentService {
             append("Location EN", company.locationEN)
             append("Location ZH", company.locationZH)
             append("Website", company.website)
+            append("Company Email", company.email)
             append("Phone", company.phone)
             append("Address", company.address)
         }
@@ -613,6 +643,7 @@ final class EnrichmentService {
             append("Company Name ZH", contact.companyNameZH)
             append("Phone", contact.phone)
             append("Email", contact.email)
+            append("WeChat", contact.wechat)
             append("Location EN", contact.locationEN)
             append("Location ZH", contact.locationZH)
             append("Website", contact.website)
@@ -634,6 +665,7 @@ final class EnrichmentService {
             linkedin: payload.linkedin,
             phone: payload.phone,
             address: payload.address,
+            companyEmail: payload.company_email,
             industry: payload.industry,
             serviceType: payload.service_type,
             marketRegion: payload.market_region,
@@ -644,7 +676,8 @@ final class EnrichmentService {
             title: payload.title,
             department: payload.department,
             location: payload.location,
-            email: payload.email
+            email: payload.email,
+            wechat: payload.wechat
         )
     }
 
@@ -656,6 +689,7 @@ final class EnrichmentService {
             result.linkedin ?? "",
             result.phone ?? "",
             result.address ?? "",
+            result.companyEmail ?? "",
             result.industry ?? "",
             result.serviceType ?? "",
             result.marketRegion ?? "",
@@ -666,7 +700,8 @@ final class EnrichmentService {
             result.title ?? "",
             result.department ?? "",
             result.location ?? "",
-            result.email ?? ""
+            result.email ?? "",
+            result.wechat ?? ""
         ]
         let hasValue = values.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         return !hasValue && result.tags.isEmpty && result.suggestedLinks.isEmpty
@@ -696,6 +731,7 @@ private struct EnrichmentPayload: Decodable {
     let linkedin: String?
     let phone: String?
     let address: String?
+    let company_email: String?
     let industry: String?
     let service_type: String?
     let market_region: String?
@@ -707,6 +743,7 @@ private struct EnrichmentPayload: Decodable {
     let department: String?
     let location: String?
     let email: String?
+    let wechat: String?
 }
 
 private struct TaggingPayload: Decodable {

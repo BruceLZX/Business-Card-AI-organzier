@@ -39,6 +39,7 @@ struct CreateDocumentView: View {
                     department: $0.department,
                     phone: $0.phone,
                     email: $0.email,
+                    wechat: $0.wechat,
                     locationEN: $0.locationEN,
                     locationZH: $0.locationZH,
                     website: $0.website,
@@ -60,6 +61,7 @@ struct CreateDocumentView: View {
                     locationZH: $0.locationZH,
                     marketRegion: $0.marketRegion,
                     website: $0.website,
+                    email: $0.email,
                     phone: $0.phone,
                     address: $0.address,
                     notes: $0.notes,
@@ -77,6 +79,7 @@ struct CreateDocumentView: View {
         let department: String?
         let phone: String
         let email: String
+        let wechat: String
         let locationEN: String?
         let locationZH: String?
         let website: String?
@@ -97,6 +100,7 @@ struct CreateDocumentView: View {
         let locationZH: String?
         let marketRegion: String?
         let website: String?
+        let email: String?
         let phone: String?
         let address: String?
         let notes: String?
@@ -122,6 +126,7 @@ struct CreateDocumentView: View {
     @State private var contactDepartment = ""
     @State private var contactPhone = ""
     @State private var contactEmail = ""
+    @State private var contactWeChat = ""
     @State private var contactLocation = ""
     @State private var contactOriginalLocation = ""
     @State private var contactWebsite = ""
@@ -139,6 +144,7 @@ struct CreateDocumentView: View {
     @State private var companyMarketRegion = ""
     @State private var companyTargetAudience = ""
     @State private var companyWebsite = ""
+    @State private var companyEmail = ""
     @State private var companyLinkedin = ""
     @State private var companyPhone = ""
     @State private var companyAddress = ""
@@ -169,6 +175,10 @@ struct CreateDocumentView: View {
     @State private var didAutoCheckCompanyMatch = false
     @State private var didAutoTranslateContactName = false
     @State private var didAutoTranslateCompanyName = false
+    @State private var isManualCompanyMatch = false
+    @State private var isManualContactMatch = false
+    @State private var lastManualCompanyName = ""
+    @State private var lastManualContactName = ""
 
     init(
         images: [UIImage],
@@ -207,11 +217,13 @@ struct CreateDocumentView: View {
                         }
 
                         HStack {
-                            Button(settings.text(.selectCompany)) {
-                                showCompanyPicker = true
+                            if source != .manual {
+                                Button(settings.text(.selectCompany)) {
+                                    showCompanyPicker = true
+                                }
+                                .buttonStyle(.bordered)
+                                Spacer()
                             }
-                            .buttonStyle(.bordered)
-                            Spacer()
                         }
 
                         if !showExistingCompanyInfo {
@@ -353,6 +365,12 @@ struct CreateDocumentView: View {
             .onChange(of: documentType) { _, _ in
                 applyPrefillForCurrentType()
             }
+            .onChange(of: companyName) { _, _ in
+                checkManualCompanyMatchIfNeeded()
+            }
+            .onChange(of: contactName) { _, _ in
+                checkManualContactMatchIfNeeded()
+            }
             .sheet(isPresented: $showCompanyPicker) {
                 NavigationStack {
                     List {
@@ -452,6 +470,7 @@ struct CreateDocumentView: View {
             summary: companySummary,
             serviceKeywords: companyTags,
             website: companyWebsite,
+            email: companyEmail.isEmpty ? nil : companyEmail,
             linkedinURL: companyLinkedin.isEmpty ? nil : companyLinkedin,
             industry: companyIndustry.isEmpty ? nil : companyIndustry,
             companySize: companySize.isEmpty ? nil : companySize,
@@ -474,6 +493,7 @@ struct CreateDocumentView: View {
             createdAt: Date()
         )
         appState.addCompany(company)
+        appState.ensureCompanyLocalization(companyID: company.id, targetLanguage: settings.language)
         if !images.isEmpty {
             for image in images {
                 _ = appState.addCompanyPhoto(companyID: company.id, image: image)
@@ -494,6 +514,7 @@ struct CreateDocumentView: View {
             department: contactDepartment.isEmpty ? nil : contactDepartment,
             phone: contactPhone,
             email: contactEmail,
+            wechat: contactWeChat.isEmpty ? nil : contactWeChat,
             location: resolvedLocation.isEmpty ? nil : resolvedLocation,
             originalLocation: contactOriginalLocation.isEmpty ? nil : contactOriginalLocation,
             website: contactWebsite.isEmpty ? nil : contactWebsite,
@@ -509,6 +530,7 @@ struct CreateDocumentView: View {
             createdAt: Date()
         )
         appState.addContact(contact)
+        appState.ensureContactLocalization(contactID: contact.id, targetLanguage: settings.language)
         if !images.isEmpty {
             for image in images {
                 _ = appState.addContactPhoto(contactID: contact.id, image: image)
@@ -646,6 +668,7 @@ struct CreateDocumentView: View {
         if !companyMarketRegion.isEmpty { updated.marketRegion = companyMarketRegion }
         if !companyTargetAudience.isEmpty { updated.targetAudience = companyTargetAudience }
         if !companyWebsite.isEmpty { updated.website = companyWebsite }
+        if !companyEmail.isEmpty { updated.email = companyEmail }
         if !companyLinkedin.isEmpty { updated.linkedinURL = companyLinkedin }
         if !companyPhone.isEmpty { updated.phone = companyPhone }
         if !companyAddress.isEmpty { updated.address = companyAddress }
@@ -667,6 +690,7 @@ struct CreateDocumentView: View {
         if let department = contactDepartment.isEmpty ? nil : contactDepartment { updated.department = department }
         if !contactPhone.isEmpty { updated.phone = contactPhone }
         if !contactEmail.isEmpty { updated.email = contactEmail }
+        if !contactWeChat.isEmpty { updated.wechat = contactWeChat }
         let resolvedLocation = contactLocation.isEmpty ? contactOriginalLocation : contactLocation
         if !resolvedLocation.isEmpty { updated.location = resolvedLocation }
         if !contactOriginalLocation.isEmpty { updated.originalLocation = contactOriginalLocation }
@@ -941,6 +965,7 @@ struct CreateDocumentView: View {
         styledTextField(settings.text(.location), text: companyLocationBinding, isBlue: isBlue)
         styledTextField(settings.text(.marketRegionLabel), text: $companyMarketRegion, isBlue: isBlue)
         styledTextField(settings.text(.website), text: $companyWebsite, isBlue: isBlue)
+        styledTextField(settings.text(.companyEmail), text: $companyEmail, isBlue: isBlue)
         styledTextField(settings.text(.linkedin), text: $companyLinkedin, isBlue: isBlue)
         styledTextField(settings.text(.phone), text: $companyPhone, isBlue: isBlue)
         styledTextField(settings.text(.address), text: $companyAddress, isBlue: isBlue)
@@ -955,6 +980,7 @@ struct CreateDocumentView: View {
         styledTextField(settings.text(.location), text: contactLocationBinding, isBlue: isBlue)
         styledTextField(settings.text(.phone), text: $contactPhone, isBlue: isBlue)
         styledTextField(settings.text(.email), text: $contactEmail, isBlue: isBlue)
+        styledTextField(settings.text(.wechat), text: $contactWeChat, isBlue: isBlue)
         styledTextField(settings.text(.personalSite), text: $contactWebsite, isBlue: isBlue)
         styledTextField(settings.text(.linkedin), text: $contactLinkedin, isBlue: isBlue)
     }
@@ -1018,6 +1044,7 @@ struct CreateDocumentView: View {
             let companyLocation = localizedDisplay(primary: company.location, fallback: company.originalLocation)
             if !companyLocation.isEmpty { infoRow(settings.text(.location), companyLocation) }
             if !company.website.isEmpty { infoRow(settings.text(.website), company.website) }
+            if let email = company.email, !email.isEmpty { infoRow(settings.text(.companyEmail), email) }
         }
         .foregroundStyle(.secondary)
         .padding(.vertical, 4)
@@ -1041,6 +1068,7 @@ struct CreateDocumentView: View {
             }
             if !contact.phone.isEmpty { infoRow(settings.text(.phone), contact.phone) }
             if !contact.email.isEmpty { infoRow(settings.text(.email), contact.email) }
+            if let wechat = contact.wechat, !wechat.isEmpty { infoRow(settings.text(.wechat), wechat) }
             if let website = contact.website, !website.isEmpty { infoRow(settings.text(.personalSite), website) }
             if let linkedin = contact.linkedinURL, !linkedin.isEmpty { infoRow(settings.text(.linkedin), linkedin) }
             if !contact.notes.isEmpty { infoRow(settings.text(.notes), contact.notes) }
@@ -1089,6 +1117,7 @@ struct CreateDocumentView: View {
             HStack {
                 Button(settings.text(.cancel)) {
                     showCompanyMatchSheet = false
+                    isManualCompanyMatch = false
                 }
                 Spacer()
                 Button(settings.text(.keepNewCompany)) {
@@ -1097,14 +1126,10 @@ struct CreateDocumentView: View {
                     usingExistingCompany = false
                     selectedCompanyID = nil
                     showCompanyMatchSheet = false
+                    isManualCompanyMatch = false
                 }
                 Button(settings.text(.confirm)) {
-                    guard let pendingCompanyMatchID else { return }
-                    selectedCompanyID = pendingCompanyMatchID
-                    usingExistingCompany = true
-                    companyMatchResolved = true
-                    companyMatchConfirmed = true
-                    showCompanyMatchSheet = false
+                    handleCompanyMatchConfirm()
                 }
                 .disabled(pendingCompanyMatchID == nil)
             }
@@ -1152,6 +1177,7 @@ struct CreateDocumentView: View {
             HStack {
                 Button(settings.text(.cancel)) {
                     showContactMatchSheet = false
+                    isManualContactMatch = false
                 }
                 Spacer()
                 Button(settings.text(.createNew)) {
@@ -1160,14 +1186,10 @@ struct CreateDocumentView: View {
                     usingExistingContact = false
                     selectedContactID = nil
                     showContactMatchSheet = false
+                    isManualContactMatch = false
                 }
                 Button(settings.text(.confirm)) {
-                    guard let pendingContactMatchID else { return }
-                    selectedContactID = pendingContactMatchID
-                    usingExistingContact = true
-                    contactMatchResolved = true
-                    contactMatchConfirmed = true
-                    showContactMatchSheet = false
+                    handleContactMatchConfirm()
                 }
                 .disabled(pendingContactMatchID == nil)
             }
@@ -1175,6 +1197,38 @@ struct CreateDocumentView: View {
         .padding()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    private func handleCompanyMatchConfirm() {
+        guard let pendingCompanyMatchID else { return }
+        if isManualCompanyMatch {
+            showCompanyMatchSheet = false
+            isManualCompanyMatch = false
+            onCreate?(CreatedDocument(id: pendingCompanyMatchID, kind: .company))
+            dismiss()
+            return
+        }
+        selectedCompanyID = pendingCompanyMatchID
+        usingExistingCompany = true
+        companyMatchResolved = true
+        companyMatchConfirmed = true
+        showCompanyMatchSheet = false
+    }
+
+    private func handleContactMatchConfirm() {
+        guard let pendingContactMatchID else { return }
+        if isManualContactMatch {
+            showContactMatchSheet = false
+            isManualContactMatch = false
+            onCreate?(CreatedDocument(id: pendingContactMatchID, kind: .contact))
+            dismiss()
+            return
+        }
+        selectedContactID = pendingContactMatchID
+        usingExistingContact = true
+        contactMatchResolved = true
+        contactMatchConfirmed = true
+        showContactMatchSheet = false
     }
 
 
@@ -1215,6 +1269,7 @@ struct CreateDocumentView: View {
         setIfEmpty(&contactDepartment, contact.department)
         setIfEmpty(&contactPhone, contact.phone)
         setIfEmpty(&contactEmail, contact.email)
+        setIfEmpty(&contactWeChat, contact.wechat)
         setIfEmpty(&contactLocation, contact.locationEN)
         setIfEmpty(&contactOriginalLocation, contact.locationZH)
         setIfEmpty(&contactWebsite, contact.website)
@@ -1239,6 +1294,7 @@ struct CreateDocumentView: View {
         setIfEmpty(&companyOriginalLocation, company.locationZH)
         setIfEmpty(&companyMarketRegion, company.marketRegion)
         setIfEmpty(&companyWebsite, company.website)
+        setIfEmpty(&companyEmail, company.email)
         setIfEmpty(&companyPhone, company.phone)
         setIfEmpty(&companyAddress, company.address)
         setIfEmpty(&companyNotes, company.notes)
@@ -1315,6 +1371,32 @@ struct CreateDocumentView: View {
         companyMatches = matches
         showCompanyMatchSheet = true
         didAutoCheckCompanyMatch = true
+    }
+
+    private func checkManualCompanyMatchIfNeeded() {
+        guard source == .manual else { return }
+        let trimmed = companyName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2, trimmed != lastManualCompanyName else { return }
+        lastManualCompanyName = trimmed
+        let matches = findCompanyMatches()
+        guard !matches.isEmpty else { return }
+        companyMatches = matches
+        pendingCompanyMatchID = matches.first?.id
+        isManualCompanyMatch = true
+        showCompanyMatchSheet = true
+    }
+
+    private func checkManualContactMatchIfNeeded() {
+        guard source == .manual else { return }
+        let trimmed = contactName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2, trimmed != lastManualContactName else { return }
+        lastManualContactName = trimmed
+        let matches = findContactMatches()
+        guard !matches.isEmpty else { return }
+        contactMatches = matches
+        pendingContactMatchID = matches.first?.id
+        isManualContactMatch = true
+        showContactMatchSheet = true
     }
 
     private func looksLikeCompany(_ value: String) -> Bool {

@@ -208,11 +208,11 @@ final class AppState: ObservableObject {
                     switch type {
                     case .company:
                         guard var company = self.company(for: documentID) else { return }
-                        company.tags = Array(Set(company.tags + normalized))
+                        company.tags = self.mergeTags(existing: company.tags, incoming: normalized)
                         self.updateCompany(company)
                     case .contact:
                         guard var contact = self.contact(for: documentID) else { return }
-                        contact.tags = Array(Set(contact.tags + normalized))
+                        contact.tags = self.mergeTags(existing: contact.tags, incoming: normalized)
                         self.updateContact(contact)
                     }
                 }
@@ -227,11 +227,47 @@ final class AppState: ObservableObject {
     private func normalizeTags(_ input: [String]) -> [String] {
         guard !input.isEmpty else { return [] }
         let poolMap = Dictionary(uniqueKeysWithValues: tagPool.map { ($0.lowercased(), $0) })
-        return input.compactMap { tag in
+        var result: [String] = []
+        var seen: Set<String> = []
+        for tag in input {
             let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            return poolMap[trimmed.lowercased()] ?? trimmed
+            guard !trimmed.isEmpty else { continue }
+            let key = trimmed.lowercased()
+            guard !seen.contains(key) else { continue }
+            let canonical = poolMap[key] ?? trimmed
+            result.append(canonical)
+            seen.insert(key)
         }
+        return result
+    }
+
+    private func mergeTags(existing: [String], incoming: [String]) -> [String] {
+        guard !incoming.isEmpty else { return existing }
+        let poolMap = Dictionary(uniqueKeysWithValues: tagPool.map { ($0.lowercased(), $0) })
+        var result: [String] = []
+        var seen: Set<String> = []
+        for tag in existing + incoming {
+            let trimmed = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let key = trimmed.lowercased()
+            guard !seen.contains(key) else { continue }
+            let canonical = poolMap[key] ?? trimmed
+            result.append(canonical)
+            seen.insert(key)
+        }
+        return result
+    }
+
+    nonisolated private static func sanitizeEnrichedValue(_ value: String?) -> String? {
+        let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let marker = AIConfig.uncertainMarker
+        let stripped = trimmed.replacingOccurrences(of: marker, with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if stripped.isEmpty {
+            return nil
+        }
+        return trimmed
     }
 
     func findDuplicateContact(name: String, phone: String, email: String) -> ContactDocument? {
@@ -267,6 +303,7 @@ final class AppState: ObservableObject {
             summary: "",
             serviceKeywords: [],
             website: "",
+            email: nil,
             linkedinURL: nil,
             industry: nil,
             companySize: nil,
@@ -459,6 +496,7 @@ final class AppState: ObservableObject {
         let context = [
             company.originalName,
             company.website,
+            company.email,
             company.linkedinURL,
             company.phone,
             company.address,
@@ -496,7 +534,8 @@ final class AppState: ObservableObject {
             }) { [weak self] result, errorCode in
                 guard let self else { return }
                 guard let result else {
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
                         if errorCode == "empty_result", var current = self.company(for: companyID) {
                             current.enrichedAt = Date()
                             self.updateCompany(current)
@@ -506,7 +545,8 @@ final class AppState: ObservableObject {
                     }
                     return
                 }
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     guard let current = self.company(for: companyID) else {
                         self.finishEnrichmentProgress()
                         return
@@ -517,12 +557,12 @@ final class AppState: ObservableObject {
                     var didChange = false
 
                     func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
-                        guard !new.isEmpty, new != current else { return }
+                        guard let sanitized = Self.sanitizeEnrichedValue(new), !sanitized.isEmpty, sanitized != current else { return }
                         enrichedFields.append(key)
                         if !current.isEmpty {
                             backups[key] = current
                         }
-                        assign(new)
+                        assign(sanitized)
                         didChange = true
                     }
 
@@ -530,12 +570,12 @@ final class AppState: ObservableObject {
                         applyField(key, current: current ?? "", new: new ?? "", assign: assign)
                     }
 
-                    if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
-                        updated.aiSummaryEN = result.summaryEN
+                    if let sanitized = Self.sanitizeEnrichedValue(result.summaryEN), sanitized != updated.aiSummaryEN {
+                        updated.aiSummaryEN = sanitized
                         didChange = true
                     }
-                    if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
-                        updated.aiSummaryZH = result.summaryZH
+                    if let sanitized = Self.sanitizeEnrichedValue(result.summaryZH), sanitized != updated.aiSummaryZH {
+                        updated.aiSummaryZH = sanitized
                         didChange = true
                     }
                     if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
@@ -550,8 +590,8 @@ final class AppState: ObservableObject {
                             guard !trimmed.isEmpty else { return "" }
                             return poolMap[trimmed.lowercased()] ?? trimmed
                         }.filter { !$0.isEmpty }
-                        let combinedTags = Array(Set(updated.tags + normalizedTags))
-                        if Set(combinedTags) != Set(updated.tags) {
+                        let combinedTags = self.mergeTags(existing: updated.tags, incoming: normalizedTags)
+                        if combinedTags.map({ $0.lowercased() }).sorted() != updated.tags.map({ $0.lowercased() }).sorted() {
                             if !updated.tags.isEmpty {
                                 backups["tags"] = updated.tags.joined(separator: " · ")
                             }
@@ -561,6 +601,7 @@ final class AppState: ObservableObject {
                         }
                     }
                     applyField("website", current: updated.website, new: result.website ?? "") { updated.website = $0 }
+                    applyOptionalField("email", current: updated.email, new: result.companyEmail) { updated.email = $0 }
                     applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
                     applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
                     applyField("address", current: updated.address, new: result.address ?? "") { updated.address = $0 }
@@ -606,6 +647,7 @@ final class AppState: ObservableObject {
         let contextParts: [String?] = [
             contact.email,
             contact.phone,
+            contact.wechat,
             contact.website,
             contact.linkedinURL,
             contact.title,
@@ -640,7 +682,8 @@ final class AppState: ObservableObject {
             }) { [weak self] result, errorCode in
                 guard let self else { return }
                 guard let result else {
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
                         if errorCode == "empty_result", var current = self.contact(for: contactID) {
                             current.enrichedAt = Date()
                             self.updateContact(current)
@@ -650,7 +693,8 @@ final class AppState: ObservableObject {
                     }
                     return
                 }
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
                     guard let current = self.contact(for: contactID) else {
                         self.finishEnrichmentProgress()
                         return
@@ -661,12 +705,12 @@ final class AppState: ObservableObject {
                     var didChange = false
 
                     func applyField(_ key: String, current: String, new: String, assign: (String) -> Void) {
-                        guard !new.isEmpty, new != current else { return }
+                        guard let sanitized = Self.sanitizeEnrichedValue(new), !sanitized.isEmpty, sanitized != current else { return }
                         enrichedFields.append(key)
                         if !current.isEmpty {
                             backups[key] = current
                         }
-                        assign(new)
+                        assign(sanitized)
                         didChange = true
                     }
 
@@ -674,12 +718,12 @@ final class AppState: ObservableObject {
                         applyField(key, current: current ?? "", new: new ?? "", assign: assign)
                     }
 
-                    if !result.summaryEN.isEmpty, result.summaryEN != updated.aiSummaryEN {
-                        updated.aiSummaryEN = result.summaryEN
+                    if let sanitized = Self.sanitizeEnrichedValue(result.summaryEN), sanitized != updated.aiSummaryEN {
+                        updated.aiSummaryEN = sanitized
                         didChange = true
                     }
-                    if !result.summaryZH.isEmpty, result.summaryZH != updated.aiSummaryZH {
-                        updated.aiSummaryZH = result.summaryZH
+                    if let sanitized = Self.sanitizeEnrichedValue(result.summaryZH), sanitized != updated.aiSummaryZH {
+                        updated.aiSummaryZH = sanitized
                         didChange = true
                     }
                     if !updated.aiSummaryEN.isEmpty || !updated.aiSummaryZH.isEmpty {
@@ -694,8 +738,8 @@ final class AppState: ObservableObject {
                             guard !trimmed.isEmpty else { return "" }
                             return poolMap[trimmed.lowercased()] ?? trimmed
                         }.filter { !$0.isEmpty }
-                        let combinedTags = Array(Set(updated.tags + normalizedTags))
-                        if Set(combinedTags) != Set(updated.tags) {
+                        let combinedTags = self.mergeTags(existing: updated.tags, incoming: normalizedTags)
+                        if combinedTags.map({ $0.lowercased() }).sorted() != updated.tags.map({ $0.lowercased() }).sorted() {
                             if !updated.tags.isEmpty {
                                 backups["tags"] = updated.tags.joined(separator: " · ")
                             }
@@ -709,6 +753,7 @@ final class AppState: ObservableObject {
                     applyOptionalField("location", current: updated.location, new: result.location) { updated.location = $0 }
                     applyField("phone", current: updated.phone, new: result.phone ?? "") { updated.phone = $0 }
                     applyField("email", current: updated.email, new: result.email ?? "") { updated.email = $0 }
+                    applyOptionalField("wechat", current: updated.wechat, new: result.wechat) { updated.wechat = $0 }
                     applyOptionalField("website", current: updated.website, new: result.website) { updated.website = $0 }
                     applyOptionalField("linkedin", current: updated.linkedinURL, new: result.linkedin) { updated.linkedinURL = $0 }
 

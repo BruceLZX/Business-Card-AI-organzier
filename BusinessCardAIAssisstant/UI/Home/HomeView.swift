@@ -1,10 +1,10 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 
 struct HomeView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: AppSettings
-    @State private var isPresentingCamera = false
     @State private var isPresentingCreate = false
     @State private var isProcessingOCR = false
     @State private var capturedImages: [UIImage] = []
@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var showManualCompany = false
     @State private var pendingDeleteRecent: RecentDocument?
     @State private var showRecentDeleteConfirm = false
+    @State private var showAddFlow = false
 
     private let ocrService = OCRService()
     private let extractor = OCRExtractionService()
@@ -34,7 +35,7 @@ struct HomeView: View {
                 }
 
                 Button {
-                    isPresentingCamera = true
+                    showAddFlow = true
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 26)
@@ -188,8 +189,17 @@ struct HomeView: View {
                 appState.ensureContactLocalization(contactID: contact.id, targetLanguage: settings.language)
             }
         }
-        .sheet(isPresented: $isPresentingCamera) {
-            MultiCaptureView(maxPhotos: 5) { images in
+        .sheet(isPresented: $showAddFlow) {
+            AddCaptureView(
+                title: settings.text(.captureTitle),
+                subtitle: settings.text(.captureSubtitle),
+                cameraLabel: settings.text(.takePhoto),
+                libraryLabel: settings.text(.addFromLibrary),
+                cancelLabel: settings.text(.cancel),
+                confirmLabel: settings.text(.create),
+                maxPhotos: 10
+            ) { images in
+                showAddFlow = false
                 handleCapture(images)
             }
             .environmentObject(settings)
@@ -390,5 +400,284 @@ struct HomeView: View {
         HomeView()
             .environmentObject(AppState())
             .environmentObject(AppSettings())
+    }
+}
+
+private struct AddCaptureView: View {
+    let title: String
+    let subtitle: String
+    let cameraLabel: String
+    let libraryLabel: String
+    let cancelLabel: String
+    let confirmLabel: String
+    let maxPhotos: Int
+    let onConfirm: ([UIImage]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: AppSettings
+    @State private var photos: [UIImage] = []
+    @State private var showCamera = false
+    @State private var selectedItems: [PhotosPickerItem] = []
+    @State private var showPhotoViewer = false
+    @State private var selectedPhotoIndex = 0
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                VStack(spacing: 6) {
+                    Text(title)
+                        .font(.title2.bold())
+                    Text(subtitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                photoPool
+
+                HStack(spacing: 12) {
+                    Button(action: { showCamera = true }) {
+                        actionRow(systemImage: "camera.fill", title: cameraLabel)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(photos.count >= maxPhotos)
+
+                    PhotosPicker(
+                        selection: $selectedItems,
+                        maxSelectionCount: max(0, maxPhotos - photos.count),
+                        matching: .images
+                    ) {
+                        actionRow(systemImage: "photo.on.rectangle", title: libraryLabel)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(photos.count >= maxPhotos)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(cancelLabel) { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(confirmLabel) {
+                        onConfirm(photos)
+                    }
+                    .disabled(photos.isEmpty)
+                }
+            }
+            .fullScreenCover(isPresented: $showPhotoViewer) {
+                AddCapturePhotoViewer(
+                    photos: photos,
+                    selectedIndex: $selectedPhotoIndex
+                )
+            }
+            .sheet(isPresented: $showCamera) {
+                CameraView { image in
+                    if photos.count < maxPhotos {
+                        photos.append(image)
+                    }
+                    showCamera = false
+                }
+            }
+            .onChange(of: selectedItems) { _, items in
+                guard !items.isEmpty else { return }
+                loadPickerItems(items)
+            }
+        }
+    }
+
+    private var photoPool: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("\(settings.text(.photos)) \(photos.count)/\(maxPhotos)")
+                    .font(.headline)
+                Spacer()
+            }
+
+            if photos.isEmpty {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color(.secondarySystemBackground))
+                    .frame(height: 160)
+                    .overlay(
+                        VStack(spacing: 6) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text(settings.text(.addPhotosPrompt))
+                                .foregroundStyle(.secondary)
+                                .font(.callout)
+                        }
+                    )
+            } else {
+                let columns = [GridItem(.flexible()), GridItem(.flexible())]
+                ScrollView {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(Array(photos.enumerated()), id: \.offset) { index, image in
+                            ZStack(alignment: .topTrailing) {
+                                Button {
+                                    selectedPhotoIndex = index
+                                    showPhotoViewer = true
+                                } label: {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(height: 140)
+                                        .frame(maxWidth: .infinity)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    photos.remove(at: index)
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.white)
+                                        .background(Circle().fill(Color.black.opacity(0.5)))
+                                }
+                                .padding(6)
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+            }
+        }
+    }
+
+    private func actionRow(systemImage: String, title: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .semibold))
+            Text(title)
+                .font(.headline)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemBackground))
+        )
+    }
+
+    private func loadPickerItems(_ items: [PhotosPickerItem]) {
+        let remaining = max(0, maxPhotos - photos.count)
+        let limited = Array(items.prefix(remaining))
+        Task {
+            for item in limited {
+                if let data = try? await item.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await MainActor.run {
+                        if photos.count < maxPhotos {
+                            photos.append(image)
+                        }
+                    }
+                }
+            }
+            await MainActor.run {
+                selectedItems = []
+            }
+        }
+    }
+}
+
+private struct AddCapturePhotoViewer: View {
+    let photos: [UIImage]
+    @Binding var selectedIndex: Int
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            TabView(selection: $selectedIndex) {
+                ForEach(photos.indices, id: \.self) { index in
+                    Image(uiImage: photos[index])
+                        .resizable()
+                        .scaledToFit()
+                        .tag(index)
+                        .background(Color.black)
+                }
+            }
+            .tabViewStyle(.page)
+            .background(Color.black.ignoresSafeArea())
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.white)
+                    .padding()
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct AddSourceSheet: View {
+    let title: String
+    let subtitle: String
+    let cameraLabel: String
+    let libraryLabel: String
+    let cancelLabel: String
+    let onCamera: () -> Void
+    let onLibrary: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.title2.bold())
+                Text(subtitle)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button(action: onCamera) {
+                HStack(spacing: 12) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                    Text(cameraLabel)
+                        .font(.headline)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(.secondarySystemBackground))
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onLibrary) {
+                HStack(spacing: 12) {
+                    Image(systemName: "photo.on.rectangle")
+                        .font(.system(size: 20, weight: .semibold))
+                    Text(libraryLabel)
+                        .font(.headline)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(.secondarySystemBackground))
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button(cancelLabel, role: .cancel, action: onCancel)
+                .padding(.top, 4)
+        }
+        .padding(24)
+        .presentationDetents([.medium])
     }
 }

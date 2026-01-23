@@ -24,6 +24,7 @@ struct ContactDetailView: View {
     @State private var enrichErrorMessage = ""
     @State private var showPhotoViewer = false
     @State private var selectedPhotoIndex = 0
+    @State private var showWeChatPrompt = false
 
     private enum Section {
         case profile
@@ -277,6 +278,16 @@ struct ContactDetailView: View {
         } message: {
             Text(settings.text(.unlinkConfirmMessage))
         }
+        .alert(settings.text(.wechat), isPresented: $showWeChatPrompt) {
+            Button(settings.text(.openWeChatSearch)) {
+                if let url = URL(string: "weixin://") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button(settings.text(.cancel), role: .cancel) {}
+        } message: {
+            Text(settings.text(.wechatCopiedMessage))
+        }
     }
 
     private var profileSection: some View {
@@ -387,6 +398,7 @@ struct ContactDetailView: View {
             if editingSection == .details {
                 styledTextField(settings.text(.phone), text: $draft.phone)
                 styledTextField(settings.text(.email), text: $draft.email)
+                styledTextField(settings.text(.wechat), text: binding(for: $draft.wechat))
                 styledTextField(settings.text(.location), text: locationBinding)
             } else {
                 VStack(alignment: .leading, spacing: 12) {
@@ -433,6 +445,21 @@ struct ContactDetailView: View {
                             originalLabel: settings.text(.originalValue),
                             onUndo: { undoField("email") }
                         )
+                    }
+                    if let wechat = draft.wechat, !wechat.isEmpty {
+                        WeChatRowView(
+                            label: settings.text(.wechat),
+                            wechat: wechat,
+                            actionLabel: settings.text(.openWeChatSearch),
+                            isHighlighted: isFieldHighlighted("wechat"),
+                            undoLabel: undoLabel(for: "wechat"),
+                            originalValue: originalValue(for: "wechat"),
+                            originalLabel: settings.text(.originalValue)
+                        ) {
+                            openWeChatSearch(wechat)
+                        } onUndo: {
+                            undoField("wechat")
+                        }
                     }
                     InfoRowView(
                         label: settings.text(.location),
@@ -828,7 +855,7 @@ struct ContactDetailView: View {
         case .profile:
             keys = ["title", "department"]
         case .details:
-            keys = ["phone", "email", "location"]
+            keys = ["phone", "email", "wechat", "location"]
         case .links:
             keys = ["website", "linkedin"]
         case .tags:
@@ -972,6 +999,8 @@ struct ContactDetailView: View {
             draft.phone = previous
         case "email":
             draft.email = previous
+        case "wechat":
+            draft.wechat = previous
         case "website":
             draft.website = previous
         case "linkedin":
@@ -1023,6 +1052,11 @@ struct ContactDetailView: View {
         guard !trimmed.isEmpty else { return nil }
         return URL(string: "mailto:\(trimmed)")
     }
+
+    private func openWeChatSearch(_ wechatID: String) {
+        UIPasteboard.general.string = wechatID
+        showWeChatPrompt = true
+    }
 }
 
 private struct ContactLinkRow: View {
@@ -1048,7 +1082,7 @@ private struct ContactLinkRow: View {
                             .font(.subheadline)
                             .lineLimit(nil)
                             .foregroundStyle(isHighlighted ? .blue : .primary)
-                        if displayText.contains("可能不准确") {
+                        if isHighlighted && displayText.contains("可能不准确") {
                             UncertainBadge()
                         }
                     }
@@ -1089,8 +1123,49 @@ private struct InfoRowView: View {
             Text(value?.isEmpty == false ? value! : "—")
                 .font(.subheadline)
                 .foregroundStyle(isHighlighted ? .blue : .primary)
-            if let value, value.contains("可能不准确") {
+            if isHighlighted, let value, value.contains("可能不准确") {
                 UncertainBadge()
+            }
+            if let originalValue, !originalValue.isEmpty {
+                Text("\(originalLabel)：\(originalValue)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let undoLabel {
+                UndoButton(label: undoLabel, action: onUndo)
+            }
+        }
+    }
+}
+
+private struct WeChatRowView: View {
+    let label: String
+    let wechat: String
+    let actionLabel: String
+    let isHighlighted: Bool
+    let undoLabel: String?
+    let originalValue: String?
+    let originalLabel: String
+    let onAction: () -> Void
+    let onUndo: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Image(systemName: "message.fill")
+                    .foregroundStyle(.green)
+                Text(wechat)
+                    .font(.subheadline)
+                    .foregroundStyle(isHighlighted ? .blue : .primary)
+                Spacer()
+                Button(actionLabel) {
+                    onAction()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
             if let originalValue, !originalValue.isEmpty {
                 Text("\(originalLabel)：\(originalValue)")
@@ -1221,7 +1296,7 @@ private struct LinkRow: View {
                             .font(.subheadline)
                             .lineLimit(nil)
                             .foregroundStyle(isHighlighted ? .blue : .primary)
-                        if url.absoluteString.contains("可能不准确") {
+                        if isHighlighted && url.absoluteString.contains("可能不准确") {
                             UncertainBadge()
                         }
                     }

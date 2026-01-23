@@ -7,6 +7,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
     var summary: String
     var serviceKeywords: [String]
     var website: String
+    var email: String?
     var linkedinURL: String?
     var industry: String?
     var companySize: String?
@@ -60,6 +61,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
         summary: String,
         serviceKeywords: [String],
         website: String,
+        email: String?,
         linkedinURL: String?,
         industry: String?,
         companySize: String?,
@@ -112,6 +114,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
         self.summary = summary
         self.serviceKeywords = serviceKeywords
         self.website = website
+        self.email = email
         self.linkedinURL = linkedinURL
         self.industry = industry
         self.companySize = companySize
@@ -166,6 +169,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
         case summary
         case serviceKeywords
         case website
+        case email
         case linkedinURL
         case industry
         case companySize
@@ -221,6 +225,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
         summary = try container.decode(String.self, forKey: .summary)
         serviceKeywords = try container.decode([String].self, forKey: .serviceKeywords)
         website = try container.decode(String.self, forKey: .website)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
         linkedinURL = try container.decodeIfPresent(String.self, forKey: .linkedinURL)
         industry = try container.decodeIfPresent(String.self, forKey: .industry)
         companySize = try container.decodeIfPresent(String.self, forKey: .companySize)
@@ -282,6 +287,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
         try container.encode(summary, forKey: .summary)
         try container.encode(serviceKeywords, forKey: .serviceKeywords)
         try container.encode(website, forKey: .website)
+        try container.encodeIfPresent(email, forKey: .email)
         try container.encodeIfPresent(linkedinURL, forKey: .linkedinURL)
         try container.encodeIfPresent(industry, forKey: .industry)
         try container.encodeIfPresent(companySize, forKey: .companySize)
@@ -335,6 +341,7 @@ struct CompanyDocument: Identifiable, Hashable, Codable {
         if (originalName ?? "").lowercased().contains(lowered) { return true }
         if summary.lowercased().contains(lowered) { return true }
         if serviceKeywords.joined(separator: " ").lowercased().contains(lowered) { return true }
+        if (email ?? "").lowercased().contains(lowered) { return true }
         if (industry ?? "").lowercased().contains(lowered) { return true }
         if (companySize ?? "").lowercased().contains(lowered) { return true }
         if (revenue ?? "").lowercased().contains(lowered) { return true }

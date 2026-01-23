@@ -417,6 +417,7 @@ struct CompanyDetailView: View {
         ) {
             if editingSection == .links {
                 styledTextField(settings.text(.website), text: $draft.website)
+                styledTextField(settings.text(.companyEmail), text: binding(for: $draft.email))
                 styledTextField(settings.text(.linkedin), text: binding(for: $draft.linkedinURL))
                 styledTextField(settings.text(.phone), text: $draft.phone)
                 styledTextField(settings.text(.address), text: $draft.address)
@@ -444,6 +445,30 @@ struct CompanyDetailView: View {
                             onUndo: { undoField($0) }
                         )
                     }
+                    if let email = draft.email, !email.isEmpty {
+                        if let url = emailURL(from: email) {
+                            LinkRow(
+                                title: settings.text(.companyEmail),
+                                url: url,
+                                isHighlighted: isFieldHighlighted("email"),
+                                undoLabel: undoLabel(for: "email"),
+                                originalValue: originalValue(for: "email"),
+                                originalLabel: settings.text(.originalValue),
+                                onUndo: { undoField("email") }
+                            )
+                        } else {
+                            InfoGridView(
+                                rows: [
+                                    InfoRow(key: "email", label: settings.text(.companyEmail), value: email)
+                                ],
+                                isHighlighted: isFieldHighlighted,
+                                undoLabel: { undoLabel(for: $0) },
+                                originalValue: { originalValue(for: $0) },
+                                originalLabel: settings.text(.originalValue),
+                                onUndo: { undoField($0) }
+                            )
+                        }
+                    }
                     if let url = draft.linkedinURLValue {
                         LinkRow(
                             title: settings.text(.linkedin),
@@ -466,7 +491,11 @@ struct CompanyDetailView: View {
                             onUndo: { undoField($0) }
                         )
                     }
-                    if draft.websiteURL == nil, draft.linkedinURLValue == nil, draft.website.isEmpty, draft.linkedinURL?.isEmpty != false {
+                    if draft.websiteURL == nil,
+                       draft.linkedinURLValue == nil,
+                       draft.website.isEmpty,
+                       draft.linkedinURL?.isEmpty != false,
+                       (draft.email?.isEmpty != false) {
                         Text("—")
                             .foregroundStyle(.secondary)
                     }
@@ -786,7 +815,7 @@ struct CompanyDetailView: View {
         case .details:
             keys = ["industry", "companySize", "revenue", "foundedYear", "headquarters", "serviceType", "marketRegion"]
         case .links:
-            keys = ["website", "linkedin", "phone", "address"]
+            keys = ["website", "email", "linkedin", "phone", "address"]
         case .tags:
             keys = ["tags"]
         case .notes:
@@ -949,6 +978,8 @@ struct CompanyDetailView: View {
         switch key {
         case "website":
             draft.website = previous
+        case "email":
+            draft.email = previous
         case "linkedin":
             draft.linkedinURL = previous
         case "phone":
@@ -980,6 +1011,12 @@ struct CompanyDetailView: View {
         draft.lastEnrichedValues.removeValue(forKey: key)
         draft.lastEnrichedFields.removeAll { $0 == key }
         appState.updateCompany(draft)
+    }
+
+    private func emailURL(from email: String) -> URL? {
+        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return URL(string: "mailto:\(trimmed)")
     }
 }
 
@@ -1100,7 +1137,7 @@ private struct LinkRow: View {
                             .font(.subheadline)
                             .lineLimit(nil)
                             .foregroundStyle(isHighlighted ? .blue : .primary)
-                        if url.absoluteString.contains("可能不准确") {
+                        if isHighlighted && url.absoluteString.contains("可能不准确") {
                             UncertainBadge()
                         }
                     }
@@ -1248,7 +1285,9 @@ private struct InfoGridView: View {
                         .foregroundStyle(
                             row.key.flatMap { isHighlighted($0) } == true ? .blue : .primary
                         )
-                    if let value = row.value, value.contains("可能不准确") {
+                    if let value = row.value,
+                       row.key.flatMap({ isHighlighted($0) }) == true,
+                       value.contains("可能不准确") {
                         UncertainBadge()
                     }
                     if let key = row.key,

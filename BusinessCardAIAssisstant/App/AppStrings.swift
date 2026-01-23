@@ -47,6 +47,7 @@ enum AppStringKey {
     case noRelatedContacts
     case photos
     case addPhoto
+    case addPhotosPrompt
     case noPhotos
     case aiSummaryTitle
     case aiSummaryPlaceholder
@@ -64,6 +65,10 @@ enum AppStringKey {
     case tags
     case title
     case email
+    case wechat
+    case companyEmail
+    case openWeChatSearch
+    case wechatCopiedMessage
     case location
     case marketRegionLabel
     case serviceTypeLabel
@@ -185,6 +190,7 @@ enum AppStrings {
         .noRelatedContacts: "No related contacts",
         .photos: "Photos",
         .addPhoto: "Add Photo",
+        .addPhotosPrompt: "Add photos to start.",
         .noPhotos: "No photos attached",
         .aiSummaryTitle: "AI Summary",
         .aiSummaryPlaceholder: "Use AI to generate a summary for this profile.",
@@ -202,6 +208,10 @@ enum AppStrings {
         .tags: "Tags",
         .title: "Title",
         .email: "Email",
+        .wechat: "WeChat",
+        .companyEmail: "Company Email",
+        .openWeChatSearch: "Open WeChat Search",
+        .wechatCopiedMessage: "WeChat ID copied. You can paste it into WeChat search.",
         .location: "Location",
         .marketRegionLabel: "Market region",
         .serviceTypeLabel: "Service type",
@@ -322,6 +332,7 @@ enum AppStrings {
         .noRelatedContacts: "暂无关联联系人",
         .photos: "图片",
         .addPhoto: "添加照片",
+        .addPhotosPrompt: "添加照片后开始。",
         .noPhotos: "暂无图片",
         .aiSummaryTitle: "AI 总结",
         .aiSummaryPlaceholder: "使用 AI 生成该档案总结。",
@@ -339,6 +350,10 @@ enum AppStrings {
         .tags: "标签",
         .title: "职位",
         .email: "邮箱",
+        .wechat: "微信",
+        .companyEmail: "公司邮箱",
+        .openWeChatSearch: "打开微信检索",
+        .wechatCopiedMessage: "已复制微信号，可在微信搜索中粘贴。",
         .location: "位置",
         .marketRegionLabel: "市场区域",
         .serviceTypeLabel: "服务类型",
