@@ -17,7 +17,6 @@ Turn business cards & brochures into **living profiles**: contacts, companies, l
 <br/>
 <img alt="Last Commit" src="https://img.shields.io/github/last-commit/BruceLZX/Business-Card-AI-organzier">
 <img alt="Issues" src="https://img.shields.io/github/issues/BruceLZX/Business-Card-AI-organzier">
-<img alt="License" src="https://img.shields.io/github/license/BruceLZX/Business-Card-AI-organzier">
 <img alt="Swift" src="https://img.shields.io/badge/Swift-SwiftUI-orange">
 <img alt="Platform" src="https://img.shields.io/badge/Platform-iOS-lightgrey">
 
